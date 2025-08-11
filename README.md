@@ -1,4 +1,4 @@
-# web-scraping-info-of-authors-though-API-s-to-automate-the-mailing
+# web-scraping-info-of-authors-though-API-to-automate-the-mailing
 
 ![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -53,8 +53,8 @@ This tool is perfect for researchers, students, and professionals looking to bui
 
 1.  **Clone the repository:**
     ```bash
-    git clone 
-    cd your-repository-name
+    git clone https://github.com/arupa444/web-scraping-info-of-authors-though-API-to-automate-the-mailing.git
+    cd web-scraping-info-of-authors-though-API-to-automate-the-mailing
     ```
 
 2.  **Install the required Python libraries:**
@@ -149,4 +149,4 @@ Contributions are welcome! If you have ideas for improvements or find a bug, ple
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is open to use. Use this project and contribute in the project.
