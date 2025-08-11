@@ -1,4 +1,4 @@
-# web-scraping-info-of-authors-though-API-to-automate-the-mailing
+# Web scraping info of authors though API to automate the mailing
 
 ![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)![License](https://img.shields.io/badge/license-MIT-green.svg)
 
