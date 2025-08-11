@@ -53,7 +53,7 @@ This tool is perfect for researchers, students, and professionals looking to bui
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/your-repository-name.git
+    git clone 
     cd your-repository-name
     ```
 
