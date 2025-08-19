@@ -156,6 +156,57 @@ def send_email(...):
 
 Remember to replace placeholders like `[Your Name]`, `[Your Position]`, etc., with your actual information.
 
+
+## Output Files
+
+1. **Author Data CSV**: `[search_term]_authors_with_emails.csv`
+   - Contains: name, journal, article_title, emails, affiliations
+
+2. **Email Results CSV**: `[original_csv]_results.csv`
+   - Contains: name, email, journal, success status, error messages
+
+## Important Notes
+
+1. **Email Sending Limits**:
+   - Be aware of your email provider's sending limits
+   - Gmail has a limit of 500 emails per day
+   - Consider using dedicated email services for large campaigns
+
+2. **Ethical Considerations**:
+   - Only contact authors for legitimate academic purposes
+   - Include an unsubscribe option in your emails
+   - Comply with anti-spam regulations in your jurisdiction
+
+3. **Rate Limiting**:
+   - The scripts include delays to avoid overwhelming servers
+   - Adjust these delays based on your needs and server policies
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"No articles found"**:
+   - Try a broader search term
+   - Check for typos in your search query
+   - Verify there are articles on your topic in the last 5 years
+
+2. **Email sending fails**:
+   - Verify your email credentials
+   - Check if you need to enable "less secure apps" or generate an app password
+   - Confirm your SMTP server settings
+
+3. **CSV file errors**:
+   - Ensure the CSV file is in the correct format
+   - Check for special characters that might cause encoding issues
+
+### Error Messages
+
+The scripts provide detailed error messages to help diagnose issues. Check the console output for specific error information.
+
+
+
+
+
 ## Disclaimer
 
 -   **Use Responsibly**: This tool is intended for legitimate research and professional collaboration inquiries. Do not use it for spam.
