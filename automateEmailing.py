@@ -7,6 +7,7 @@ from email.mime.text import MIMEText
 from email.utils import formataddr
 import getpass
 import re
+import os
 
 def send_email(sender_email, sender_password, recipient_name, recipient_email, journal, article_title, smtp_server, smtp_port):
     """Send a personalized email to an author"""
@@ -22,7 +23,7 @@ def send_email(sender_email, sender_password, recipient_name, recipient_email, j
     <body>
         <p>Dear Dr. {recipient_name.split()[-1]},</p>
         
-        <p>I hope this email finds you well. My name is [Your Name] and I'm reaching out to you regarding your interesting research 
+        <p>I hope this email finds you well. My name is Arupa and I'm reaching out to you regarding your interesting research 
         titled "<strong>{article_title}</strong>" published in <em>{journal}</em>.</p>
         
         <p>I'm particularly impressed by your work in this field and would like to explore potential collaboration opportunities 
@@ -33,10 +34,10 @@ def send_email(sender_email, sender_password, recipient_name, recipient_email, j
         <p>Looking forward to hearing from you.</p>
         
         <p>Best regards,<br>
-        [Your Full Name]<br>
-        [Your Position]<br>
-        [Your Institution]<br>
-        [Your Contact Information]</p>
+        Arupa Nanda Swain<br>
+        Pulsus Managing editor<br>
+        773460467<br>
+        arupaswain7735@gmail.com</p>
         
         <hr>
         <p style="font-size: 10px; color: #666;">
@@ -63,13 +64,19 @@ def send_email(sender_email, sender_password, recipient_name, recipient_email, j
     except Exception as e:
         return False, str(e)
 
-def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_server, smtp_port, max_emails=10, delay=5):
+def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_server, smtp_port, max_emails=None, delay=5):
     """Process CSV file and send emails to authors"""
     results = []
     
     try:
         with open(csv_file, 'r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
+            
+            # Count total rows in CSV if max_emails is not specified
+            if max_emails is None:
+                max_emails = sum(1 for _ in reader)
+                file.seek(0)  # Reset file pointer to beginning
+                reader = csv.DictReader(file)  # Recreate reader after counting
             
             print(f"Starting to send emails (max {max_emails}) with {delay} second delays...")
             
@@ -137,12 +144,34 @@ def validate_email(email):
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
+def count_csv_rows(csv_file):
+    """Count the number of rows in a CSV file (excluding header)"""
+    with open(csv_file, 'r', encoding='utf-8') as file:
+        reader = csv.reader(file)
+        # Skip header
+        next(reader, None)
+        # Count remaining rows
+        row_count = sum(1 for row in reader)
+    return row_count
+
 if __name__ == "__main__":
     print("=== Automated Email Sender ===\n")
     
     
     csv_file = input("Enter the path to your CSV file: ").strip()
     
+    # Check if file exists
+    if not os.path.exists(csv_file):
+        print(f"Error: File '{csv_file}' not found.")
+        exit(1)
+    
+    # Count rows in CSV
+    try:
+        csv_row_count = count_csv_rows(csv_file)
+        print(f"CSV file contains {csv_row_count} rows.")
+    except Exception as e:
+        print(f"Error reading CSV file: {e}")
+        exit(1)
     
     sender_email = input("Enter your email address: ").strip()
     sender_password = getpass.getpass("Enter your email password: ")
@@ -155,7 +184,6 @@ if __name__ == "__main__":
     print("4. Custom")
     
     choice = input("Choose your SMTP server (1-4): ").strip()
-    
     if choice == "1":
         smtp_server = "smtp.gmail.com"
         smtp_port = 587
@@ -169,8 +197,10 @@ if __name__ == "__main__":
         smtp_server = input("Enter SMTP server address: ").strip()
         smtp_port = int(input("Enter SMTP port (usually 587): ").strip())
     
+    # Set default max_emails to CSV row count
+    max_emails_input = input(f"Maximum number of emails to send (default {csv_row_count}): ").strip()
+    max_emails = int(max_emails_input) if max_emails_input else csv_row_count
     
-    max_emails = int(input("Maximum number of emails to send (default 10): ") or "10")
     delay = int(input("Delay between emails in seconds (default 5): ") or "5")
     
     
