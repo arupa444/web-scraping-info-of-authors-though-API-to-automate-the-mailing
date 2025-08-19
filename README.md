@@ -28,6 +28,32 @@ This project provides a streamlined workflow for academic and professional outre
 
 This tool is perfect for researchers, students, and professionals looking to build connections, explore collaborations, or conduct targeted outreach within the academic community.
 
+## Scripts Overview
+
+### 1. PubMed Email Extractor (`pubmed_search.py`)
+- Searches PubMed for articles related to a specific topic
+- Extracts author names, email addresses, affiliations, and article details
+- Filters results to include only articles from the last 5 years
+- Exports data to a CSV file
+
+### 2. Automated Email Sender (`email_automation.py`)
+- Reads author data from CSV files
+- Sends personalized emails to authors
+- Tracks delivery status and saves results
+
+## Requirements
+
+- Python 3.6 or higher
+- Only external dependency: `requests` (install with `pip install requests`)
+
+## Installation
+
+1. Clone or download this repository
+2. Install the required package:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
 ## Features
 
 -   **Targeted Search**: Find authors based on specific research keywords.
