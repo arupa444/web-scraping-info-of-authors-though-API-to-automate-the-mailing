@@ -131,11 +131,9 @@ After you confirm the details, the script will begin the sending process and cre
 
 ## Configuration
 
-The email template can be easily customized. Open `automaticEmailing.py` and navigate to the `send_email` function. You can edit the `html` variable to change the subject, body, and signature of the email.
+The email template can be easily customized. Open `yourHTML.html`. You can edit the `html` variable to change the subject, body, and signature of the email.
 
-```python
-def send_email(...):
-    # ...
+```HTML
     html = f"""
     <html>
     <body>
