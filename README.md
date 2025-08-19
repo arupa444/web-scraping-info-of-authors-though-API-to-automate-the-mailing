@@ -1,7 +1,6 @@
 # Web scraping info of authors though API and email automation
 
-![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)![License](https://img.shields.io/badge/license-MIT-green.svg)
-
+![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)
 A powerful two-part Python toolset to automate academic outreach. This project helps you find relevant authors on PubMed based on a research topic and then send them personalized emails for collaboration inquiries.
 
 ## Table of Contents
