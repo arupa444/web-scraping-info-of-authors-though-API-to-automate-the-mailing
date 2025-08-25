@@ -113,6 +113,7 @@ def validate_email(email):
     # Skip SMTP check since it often fails without authentication
     return "Deliverable"
 
+
 def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_server, smtp_port, template_path, max_emails=None, delay=5):
     """Process CSV file and send emails to authors"""
     results = []
