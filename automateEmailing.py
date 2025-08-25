@@ -25,22 +25,23 @@ def load_email_template(template_path):
         exit(1)
 
 
-def send_email(sender_email, sender_password, recipient_name, recipient_email, journal, article_title, smtp_server,
+def send_email(subjectForEmail, sender_email, sender_password, recipient_name, recipient_email, journal, article_title, smtp_server,
                smtp_port, template):
     """Send a personalized email to an author using HTML template"""
 
-    # Extract last name for greeting
-    last_name = recipient_name.split()[-1] if recipient_name else "Author"
 
     # Format the template with personalized data
     html = template.format(
-        last_name=last_name,
+        name=recipient_name,
         article_title=article_title,
         journal=journal
     )
+    subjectForEmail = subjectForEmail.format(
+        name = recipient_name, article_title=article_title,
+        journal=journal)
 
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = f"Collaboration Inquiry Regarding Your Research in {journal}"
+    msg['Subject'] = subjectForEmail
     msg['From'] = formataddr(("Your Name", sender_email))
     msg['To'] = formataddr((recipient_name, recipient_email))
 
@@ -114,7 +115,7 @@ def validate_email(email):
     return "Deliverable"
 
 
-def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_server, smtp_port, template_path, max_emails=None, delay=5):
+def process_csv_and_send_emails(subjectForEmail, csv_file, sender_email, sender_password, smtp_server, smtp_port, template_path, max_emails=None, delay=5):
     """Process CSV file and send emails to authors"""
     results = []
     validation_stats = {
@@ -187,7 +188,7 @@ def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_se
                     print(f"    ✓ Valid - Sending email...")
 
                     success, message = send_email(
-                        sender_email, sender_password, name, email,
+                        subjectForEmail, sender_email, sender_password, name, email,
                         journal, article_title, smtp_server, smtp_port, template
                     )
 
@@ -319,6 +320,10 @@ if __name__ == "__main__":
     template_path = input(f"Enter the path to your email template (default: {default_template}): ").strip()
     if not template_path:
         template_path = default_template
+        
+    #add the subject for email template
+    
+    subjectForEmail = input(f"Enter the Subject for your Email : ")
 
     # Check if template file exists
     if not os.path.exists(f"templates/{template_path}"):
@@ -335,7 +340,7 @@ if __name__ == "__main__":
     print("4. Any (smtp.any.....:587)")
     print("5. Custom")
 
-    choice = input("Choose your SMTP server (1-4): ").strip()
+    choice = input("Choose your SMTP server (1-5): ").strip()
     if choice == "1":
         smtp_server = "smtp.gmail.com"
         smtp_port = 587
@@ -376,7 +381,7 @@ if __name__ == "__main__":
 
     # Process emails and get results
     results, validation_stats = process_csv_and_send_emails(
-        csv_file, sender_email, sender_password, smtp_server,
+        subjectForEmail, csv_file, sender_email, sender_password, smtp_server,
         smtp_port, template_path, max_emails, delay
     )
 
@@ -399,3 +404,4 @@ if __name__ == "__main__":
                 print(f"... and {len(results) - 10} more results.")
     else:
         print("\nNo emails were processed.")
+        
