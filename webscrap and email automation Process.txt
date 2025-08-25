@@ -1,0 +1,24 @@
+any loaction:
+	->press windows + r
+	->type "CMD"
+	->cd Desktop
+	->cd web-scraping-info-of-authors-though-API-to-automate-the-mailing-main
+
+if you are in the same directory the file:
+	->go to that directory and use the search bar above-> type "cmd" and-> press "Enter"......
+
+# to fetch the email from PUBMED ->
+
+use:
+
+	python scrapName.py "topic/keywords" #Enter some keywords or some topic you want the more specific the better it will work
+
+# to automate the email process ->
+
+->First step : change the template according to your need... file path(templates\email_template.html)
+	Note: there are some variables you must use them properly
+
+->Second step : 
+	-> there are two ways:
+		-> press windows + r -> cmd -> cd Desktop -> cd web-scraping-info-of-authors-though-API-to-automate-the-mailing-main -> python automateEmailing.py ->.......
+		-> double click on that file "automateEmailing.py"
