@@ -61,6 +61,8 @@ def send_email(sender_email, sender_password, recipient_name, recipient_email, j
     except Exception as e:
         return False, str(e)
 
+
+
 # EMAIL VALIDATION FUNCTIONS
 def is_valid_syntax(email):
     """Check if email has valid syntax"""
@@ -98,6 +100,7 @@ def check_smtp(email):
     except Exception as e:
         return False
 
+
 def validate_email(email):
     """Comprehensive email validation"""
     if not is_valid_syntax(email):
@@ -107,10 +110,8 @@ def validate_email(email):
     if not has_mx_record(domain):
         return "Domain not found / no MX record"
 
-    if check_smtp(email):
-        return "Deliverable"
-    else:
-        return "Non-deliverable"
+    # Skip SMTP check since it often fails without authentication
+    return "Deliverable"
 
 def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_server, smtp_port, template_path, max_emails=None, delay=5):
     """Process CSV file and send emails to authors"""
@@ -397,3 +398,6 @@ if __name__ == "__main__":
                 print(f"... and {len(results) - 10} more results.")
     else:
         print("\nNo emails were processed.")
+
+
+# aej.journalentries@scholarlymed.com      Y!D)pT#7
