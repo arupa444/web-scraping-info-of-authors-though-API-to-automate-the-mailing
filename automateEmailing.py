@@ -24,30 +24,35 @@ def load_email_template(template_path):
         print(f"Error loading template: {e}")
         exit(1)
 
-def send_email(sender_email, sender_password, recipient_name, recipient_email, journal, article_title, smtp_server, smtp_port, template):
+
+def send_email(sender_email, sender_password, recipient_name, recipient_email, journal, article_title, smtp_server,
+               smtp_port, template):
     """Send a personalized email to an author using HTML template"""
-    
+
     # Extract last name for greeting
     last_name = recipient_name.split()[-1] if recipient_name else "Author"
-    
+
     # Format the template with personalized data
     html = template.format(
         last_name=last_name,
         article_title=article_title,
         journal=journal
     )
-    
+
     msg = MIMEMultipart('alternative')
     msg['Subject'] = f"Collaboration Inquiry Regarding Your Research in {journal}"
     msg['From'] = formataddr(("Your Name", sender_email))
     msg['To'] = formataddr((recipient_name, recipient_email))
-    
+
     # Attach the formatted HTML
     msg.attach(MIMEText(html, 'html'))
-    
-    context = ssl.create_default_context()
-    
+
     try:
+        # Create SSL context with relaxed settings for testing
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls(context=context)
             server.login(sender_email, sender_password)
@@ -77,7 +82,7 @@ def check_smtp(email):
         # Get MX record
         mx_records = dns.resolver.resolve(domain, 'MX')
         mx_record = str(mx_records[0].exchange)
-        
+
         # Connect to SMTP server
         server = smtplib.SMTP()
         server.set_debuglevel(0)  # set to 1 to see SMTP debug messages
@@ -97,11 +102,11 @@ def validate_email(email):
     """Comprehensive email validation"""
     if not is_valid_syntax(email):
         return "Invalid syntax"
-    
+
     domain = email.split('@')[1]
     if not has_mx_record(domain):
         return "Domain not found / no MX record"
-    
+
     if check_smtp(email):
         return "Deliverable"
     else:
@@ -116,42 +121,42 @@ def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_se
         "deliverable": 0,
         "failed": 0
     }
-    
+
     # Load email template
     template = load_email_template(template_path)
-    
+
     try:
         with open(csv_file, 'r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
-            
+
             # Count total rows in CSV if max_emails is not specified
             if max_emails is None:
                 max_emails = sum(1 for _ in reader)
                 file.seek(0)  # Reset file pointer to beginning
                 reader = csv.DictReader(file)  # Recreate reader after counting
-            
+
             print(f"\nStarting to process emails (max {max_emails}) with {delay} second delays...")
             print("=" * 50)
-            
+
             for i, row in enumerate(reader):
                 if i >= max_emails:
                     break
-                
+
                 name = row['name']
                 emails = row['emails'].split(';')
                 journal = row['journal']
                 article_title = row['article_title']
-                
+
                 print(f"\nProcessing row {i+1}/{max_emails}: {name}")
-                
+
                 for email in emails:
                     email = email.strip()
                     if not email:
                         continue
-                    
+
                     print(f"  Validating: {email}")
                     validation_result = validate_email(email)
-                    
+
                     # Update validation statistics
                     if validation_result == "Invalid syntax":
                         validation_stats["failed"] += 1
@@ -165,25 +170,25 @@ def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_se
                         validation_stats["failed"] += 1
                         validation_stats["has_mx"] += 1
                         validation_stats["valid_syntax"] += 1
-                    
+
                     if validation_result != "Deliverable":
                         print(f"    ✗ Skipped - {validation_result}")
                         results.append({
-                            'name': name, 
-                            'email': email, 
-                            'journal': journal, 
-                            'success': False, 
+                            'name': name,
+                            'email': email,
+                            'journal': journal,
+                            'success': False,
                             'message': validation_result
                         })
                         continue
-                    
+
                     print(f"    ✓ Valid - Sending email...")
-                    
+
                     success, message = send_email(
-                        sender_email, sender_password, name, email, 
+                        sender_email, sender_password, name, email,
                         journal, article_title, smtp_server, smtp_port, template
                     )
-                    
+
                     result = {
                         'name': name,
                         'email': email,
@@ -192,27 +197,27 @@ def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_se
                         'message': message
                     }
                     results.append(result)
-                    
+
                     if success:
                         print(f"    ✓ Email sent successfully")
                     else:
                         print(f"    ✗ Failed to send: {message}")
-                
+
                 if i < max_emails - 1:
                     print(f"\nWaiting {delay} seconds before next email...")
                     time.sleep(delay)
-    
+
     except Exception as e:
         print(f"\nError processing CSV file: {e}")
         return results, validation_stats
-    
+
     return results, validation_stats
 
 def save_results_to_csv(results, filename):
     """Save email sending results to a CSV file with error handling"""
     max_attempts = 3
     attempt = 0
-    
+
     while attempt < max_attempts:
         try:
             # Try to create a unique filename if the original exists
@@ -221,7 +226,7 @@ def save_results_to_csv(results, filename):
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"{base}_{timestamp}{ext}"
                 print(f"File already exists. Using new filename: {filename}")
-            
+
             with open(filename, 'w', newline='', encoding='utf-8') as file:
                 fieldnames = ['name', 'email', 'journal', 'success', 'message']
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -257,24 +262,24 @@ def display_summary(results, validation_stats):
     print("\n" + "=" * 60)
     print("               EMAIL SENDING SUMMARY")
     print("=" * 60)
-    
+
     # Validation statistics
     print("\nVALIDATION RESULTS:")
     print(f"  • Emails with valid syntax: {validation_stats['valid_syntax']}")
     print(f"  • Emails with MX records: {validation_stats['has_mx']}")
     print(f"  • Deliverable emails: {validation_stats['deliverable']}")
     print(f"  • Non-deliverable emails: {validation_stats['failed']}")
-    
+
     # Sending statistics
     total_attempted = len(results)
     success_count = sum(1 for r in results if r['success'])
     failed_count = total_attempted - success_count
-    
+
     print("\nSENDING RESULTS:")
     print(f"  • Total emails attempted: {total_attempted}")
     print(f"  • Successfully sent: {success_count}")
     print(f"  • Failed to send: {failed_count}")
-    
+
     # Detailed failure breakdown
     if failed_count > 0:
         print("\nFAILURE BREAKDOWN:")
@@ -283,22 +288,22 @@ def display_summary(results, validation_stats):
             if not r['success']:
                 reason = r['message']
                 failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
-        
+
         for reason, count in failure_reasons.items():
             print(f"  • {reason}: {count}")
-    
+
     print("\n" + "=" * 60)
 
 if __name__ == "__main__":
     print("=== AUTOMATED EMAIL SENDER ===\n")
-    
+
     csv_file = input("Enter the path to your CSV file: ").strip()
-    
+
     # Check if file exists
     if not os.path.exists(csv_file):
         print(f"Error: File '{csv_file}' not found.")
         exit(1)
-    
+
     # Count rows in CSV
     try:
         csv_row_count = count_csv_rows(csv_file)
@@ -306,28 +311,28 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error reading CSV file: {e}")
         exit(1)
-    
+
     # Get email template path
     default_template = "email_template.html"
     template_path = input(f"Enter the path to your email template (default: {default_template}): ").strip()
     if not template_path:
         template_path = default_template
-    
+
     # Check if template file exists
     if not os.path.exists(f"templates/{template_path}"):
         print(f"Error: Template file 'templates/{template_path}' not found.")
         exit(1)
-    
+
     sender_email = input("Enter your email address: ").strip()
     sender_password = getpass.getpass("Enter your email password: ")
-    
+
     print("\nCommon SMTP servers:")
     print("1. Gmail (smtp.gmail.com:587)")
     print("2. Outlook (smtp.office365.com:587)")
     print("3. Yahoo (smtp.mail.yahoo.com:587)")
     print("4. Any (smtp.any.....:587)")
     print("5. Custom")
-    
+
     choice = input("Choose your SMTP server (1-4): ").strip()
     if choice == "1":
         smtp_server = "smtp.gmail.com"
@@ -344,13 +349,13 @@ if __name__ == "__main__":
     else:
         smtp_server = input("Enter SMTP server address: ").strip()
         smtp_port = int(input("Enter SMTP port (usually 587): ").strip())
-    
+
     # Set default max_emails to CSV row count
     max_emails_input = input(f"Maximum number of emails to send (default {csv_row_count}): ").strip()
     max_emails = int(max_emails_input) if max_emails_input else csv_row_count
-    
+
     delay = int(input("Delay between emails in seconds (default 5): ") or "5")
-    
+
     print("\n" + "=" * 50)
     print("          CONFIRMATION")
     print("=" * 50)
@@ -361,33 +366,33 @@ if __name__ == "__main__":
     print(f"Max emails: {max_emails}")
     print(f"Delay between emails: {delay} seconds")
     print("=" * 50)
-    
+
     confirm = input("\nProceed with sending emails? (yes/no): ").strip().lower()
     if confirm != "yes":
         print("Operation cancelled.")
         exit()
-    
+
     # Process emails and get results
     results, validation_stats = process_csv_and_send_emails(
-        csv_file, sender_email, sender_password, smtp_server, 
+        csv_file, sender_email, sender_password, smtp_server,
         smtp_port, template_path, max_emails, delay
     )
-    
+
     # Display summary
     display_summary(results, validation_stats)
-    
+
     # Save results if we have any
     if results:
         results_file = csv_file.replace('.csv', '_results.csv')
         save_success = save_results_to_csv(results, results_file)
-        
+
         if not save_success:
             print("\nWarning: Results could not be saved to CSV file.")
             print("Here's a summary of the results:")
             for i, result in enumerate(results[:10]):  # Show first 10 results
                 status = "✓" if result['success'] else "✗"
                 print(f"{status} {result['name']} ({result['email']}): {result['message']}")
-            
+
             if len(results) > 10:
                 print(f"... and {len(results) - 10} more results.")
     else:
