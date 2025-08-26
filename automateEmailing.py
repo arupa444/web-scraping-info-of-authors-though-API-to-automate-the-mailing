@@ -411,4 +411,3 @@ if __name__ == "__main__":
                 print(f"... and {len(results) - 10} more results.")
     else:
         print("\nNo emails were processed.")
-
