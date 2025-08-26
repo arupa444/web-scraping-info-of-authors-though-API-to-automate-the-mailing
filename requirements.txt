@@ -1,2 +1,7 @@
 requests
 dnspython
+fastapi
+pydantic
+json
+dotenv
+uvicorn
