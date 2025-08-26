@@ -11,6 +11,7 @@ import os
 import dns.resolver
 from datetime import datetime
 
+
 def load_email_template(template_path):
     """Load email template from HTML file"""
     template_path = f"templates/{template_path}"
@@ -25,22 +26,23 @@ def load_email_template(template_path):
         exit(1)
 
 
-def send_email(sender_email, sender_password, recipient_name, recipient_email, journal, article_title, smtp_server,
+def send_email(subjectForEmail, sender_email, sender_password, recipient_name, recipient_email, journal, article_title,
+               smtp_server,
                smtp_port, template):
     """Send a personalized email to an author using HTML template"""
 
-    # Extract last name for greeting
-    last_name = recipient_name.split()[-1] if recipient_name else "Author"
-
     # Format the template with personalized data
     html = template.format(
-        last_name=last_name,
+        name=recipient_name,
         article_title=article_title,
         journal=journal
     )
+    subjectForEmail = subjectForEmail.format(
+        name=recipient_name, article_title=article_title,
+        journal=journal)
 
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = f"Collaboration Inquiry Regarding Your Research in {journal}"
+    msg['Subject'] = subjectForEmail
     msg['From'] = formataddr(("Your Name", sender_email))
     msg['To'] = formataddr((recipient_name, recipient_email))
 
@@ -62,12 +64,12 @@ def send_email(sender_email, sender_password, recipient_name, recipient_email, j
         return False, str(e)
 
 
-
 # EMAIL VALIDATION FUNCTIONS
 def is_valid_syntax(email):
     """Check if email has valid syntax"""
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
+
 
 def has_mx_record(domain):
     """Check if domain has MX record"""
@@ -76,6 +78,7 @@ def has_mx_record(domain):
         return bool(records)
     except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
         return False
+
 
 def check_smtp(email):
     """Check if SMTP server accepts the email"""
@@ -114,7 +117,8 @@ def validate_email(email):
     return "Deliverable"
 
 
-def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_server, smtp_port, template_path, max_emails=None, delay=5):
+def process_csv_and_send_emails(subjectForEmail, csv_file, sender_email, sender_password, smtp_server, smtp_port,
+                                template_path, max_emails=None, delay=5):
     """Process CSV file and send emails to authors"""
     results = []
     validation_stats = {
@@ -149,7 +153,7 @@ def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_se
                 journal = row['journal']
                 article_title = row['article_title']
 
-                print(f"\nProcessing row {i+1}/{max_emails}: {name}")
+                print(f"\nProcessing row {i + 1}/{max_emails}: {name}")
 
                 for email in emails:
                     email = email.strip()
@@ -187,7 +191,7 @@ def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_se
                     print(f"    ✓ Valid - Sending email...")
 
                     success, message = send_email(
-                        sender_email, sender_password, name, email,
+                        subjectForEmail, sender_email, sender_password, name, email,
                         journal, article_title, smtp_server, smtp_port, template
                     )
 
@@ -214,6 +218,7 @@ def process_csv_and_send_emails(csv_file, sender_email, sender_password, smtp_se
         return results, validation_stats
 
     return results, validation_stats
+
 
 def save_results_to_csv(results, filename):
     """Save email sending results to a CSV file with error handling"""
@@ -249,6 +254,7 @@ def save_results_to_csv(results, filename):
             print(f"Error saving results: {e}")
             return False
 
+
 def count_csv_rows(csv_file):
     """Count the number of rows in a CSV file (excluding header)"""
     with open(csv_file, 'r', encoding='utf-8') as file:
@@ -258,6 +264,7 @@ def count_csv_rows(csv_file):
         # Count remaining rows
         row_count = sum(1 for row in reader)
     return row_count
+
 
 def display_summary(results, validation_stats):
     """Display a comprehensive summary of the email sending process"""
@@ -296,6 +303,7 @@ def display_summary(results, validation_stats):
 
     print("\n" + "=" * 60)
 
+
 if __name__ == "__main__":
     print("=== AUTOMATED EMAIL SENDER ===\n")
 
@@ -320,6 +328,10 @@ if __name__ == "__main__":
     if not template_path:
         template_path = default_template
 
+    # add the subject for email template
+
+    subjectForEmail = input(f"Enter the Subject for your Email : ")
+
     # Check if template file exists
     if not os.path.exists(f"templates/{template_path}"):
         print(f"Error: Template file 'templates/{template_path}' not found.")
@@ -335,7 +347,7 @@ if __name__ == "__main__":
     print("4. Any (smtp.any.....:587)")
     print("5. Custom")
 
-    choice = input("Choose your SMTP server (1-4): ").strip()
+    choice = input("Choose your SMTP server (1-5): ").strip()
     if choice == "1":
         smtp_server = "smtp.gmail.com"
         smtp_port = 587
@@ -376,7 +388,7 @@ if __name__ == "__main__":
 
     # Process emails and get results
     results, validation_stats = process_csv_and_send_emails(
-        csv_file, sender_email, sender_password, smtp_server,
+        subjectForEmail, csv_file, sender_email, sender_password, smtp_server,
         smtp_port, template_path, max_emails, delay
     )
 
@@ -399,3 +411,4 @@ if __name__ == "__main__":
                 print(f"... and {len(results) - 10} more results.")
     else:
         print("\nNo emails were processed.")
+
