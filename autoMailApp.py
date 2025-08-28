@@ -454,7 +454,9 @@ def process_batch(batch_ids, details_url, unique_authors, max_authors, current_b
     total_processed_in_batch = 0
     
     for article in root.findall('.//PubmedArticle', ns):
-        if len(unique_authors) >= max_authors:
+        # Check if we've reached the maximum number of authors
+        current_unique_count = len([k for k in unique_authors if isinstance(unique_authors[k], dict)])
+        if current_unique_count >= max_authors:
             break
 
         journal_element = article.find('.//Journal', ns)
@@ -471,7 +473,9 @@ def process_batch(batch_ids, details_url, unique_authors, max_authors, current_b
             article_title = title_element.text
 
         for author in article.findall('.//Author', ns):
-            if len(unique_authors) >= max_authors:
+            # Check if we've reached the maximum number of authors
+            current_unique_count = len([k for k in unique_authors if isinstance(unique_authors[k], dict)])
+            if current_unique_count >= max_authors:
                 break
 
             last_name = author.find('LastName', ns)
@@ -523,7 +527,7 @@ def process_batch(batch_ids, details_url, unique_authors, max_authors, current_b
     current_total = len([k for k in unique_authors if isinstance(unique_authors[k], dict)])
     progress_percentage = min(100, int((current_total / max_authors) * 100))
     
-    print(f"Batch {current_batch_num}/{total_batches} | New: {batch_emails_found} | Dups: {batch_duplicates_filtered} | Total: {current_total}/{max_authors} | Progress: {progress_percentage}%")
+    print(f"Batch {current_batch_num} | New: {batch_emails_found} | Dups: {batch_duplicates_filtered} | Total: {current_total}/{max_authors} | Progress: {progress_percentage}%")
     
     return total_processed_in_batch, batch_emails_found
 
@@ -543,8 +547,8 @@ def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000):
     # Combine search term with date filter
     full_search_term = f"{search_term} AND {date_filter}"
 
-    # Use retmax to get more results
-    retmax = min(99999, max_authors)
+    # Use retmax to get more results - PubMed allows up to 99999 per request
+    retmax = 99999  # Always get maximum articles
     search_url = f"{base_url}esearch.fcgi?db=pubmed&term={quote(full_search_term)}&retmode=json&retmax={retmax}"
 
     try:
@@ -563,14 +567,21 @@ def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000):
         # Use a dictionary to track unique authors by email
         unique_authors = {}
         total_processed = 0
+        batches_processed = 0
 
         # Process in smaller batches to avoid URL length issues
         batch_size = 100
-        total_batches = (len(article_ids) + batch_size - 1) // batch_size
         
         for i in range(0, len(article_ids), batch_size):
-            current_batch = i // batch_size + 1
-            print(f"\nStarting batch {current_batch}/{total_batches}")
+            # Check if we've reached the maximum number of authors
+            current_unique_count = len([k for k in unique_authors if isinstance(unique_authors[k], dict)])
+            if current_unique_count >= max_authors:
+                print(f"\nReached maximum number of authors ({max_authors}). Stopping.")
+                break
+                
+            batches_processed += 1
+            current_batch = batches_processed
+            print(f"\nStarting batch {current_batch}")
             
             batch_ids = article_ids[i:i + batch_size]
             
@@ -586,28 +597,46 @@ def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000):
                 
                 # Process this batch in smaller sub-batches
                 for j in range(0, len(batch_ids), sub_batch_size):
+                    # Check if we've reached the maximum number of authors
+                    current_unique_count = len([k for k in unique_authors if isinstance(unique_authors[k], dict)])
+                    if current_unique_count >= max_authors:
+                        print(f"\nReached maximum number of authors ({max_authors}). Stopping.")
+                        break
+                        
                     sub_batch_ids = batch_ids[j:j + sub_batch_size]
                     sub_details_url = f"{base_url}efetch.fcgi?db=pubmed&id={','.join(sub_batch_ids)}&retmode=xml"
                     
                     try:
                         processed_in_sub_batch, new_in_sub_batch = process_batch(
                             sub_batch_ids, sub_details_url, unique_authors, max_authors, 
-                            current_batch, total_batches
+                            current_batch, 0  # We don't need total_batches for sub-batches
                         )
                         total_processed += processed_in_sub_batch
                     except Exception as e:
                         print(f"Error processing sub-batch {j // sub_batch_size + 1}: {e}")
                         continue
+                    
+                    # Check after each sub-batch
+                    current_unique_count = len([k for k in unique_authors if isinstance(unique_authors[k], dict)])
+                    if current_unique_count >= max_authors:
+                        print(f"\nReached maximum number of authors ({max_authors}). Stopping.")
+                        break
             else:
                 try:
                     processed_in_batch, new_in_batch = process_batch(
                         batch_ids, details_url, unique_authors, max_authors, 
-                        current_batch, total_batches
+                        current_batch, 0  # We don't need total_batches for batches
                     )
                     total_processed += processed_in_batch
                 except Exception as e:
                     print(f"Error processing batch {current_batch}: {e}")
                     continue
+                
+                # Check after each batch
+                current_unique_count = len([k for k in unique_authors if isinstance(unique_authors[k], dict)])
+                if current_unique_count >= max_authors:
+                    print(f"\nReached maximum number of authors ({max_authors}). Stopping.")
+                    break
 
         # Get final counts
         unique_authors_list = [unique_authors[key] for key in unique_authors if isinstance(unique_authors[key], dict)]
@@ -628,13 +657,16 @@ def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000):
         print(f"Unique authors with emails: {unique_count}")
         print(f"Duplicate authors removed: {duplicate_count}")
         print(f"Total unique emails extracted: {total_unique_emails}")
+        print(f"Batches processed: {batches_processed}")
 
         return unique_authors_list
 
     except Exception as e:
         print(f"Error searching PubMed: {e}")
         return []
-
+    
+    
+    
 def export_to_csv_scrape(data, filename):
     """Export author data to CSV file"""
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
