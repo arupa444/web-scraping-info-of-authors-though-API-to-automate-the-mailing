@@ -28,7 +28,8 @@
                             <label for="max_authors" class="form-label">Maximum Authors</label>
                             <input type="number" class="form-control" id="max_authors" name="max_authors" value="10000"
                                 min="1" max="100000">
-                            <div class="form-text">Maximum number of authors to retrieve (max: 100000)</div>
+                            <div class="form-text">Maximum number of authors to retrieve (default: 10000, max: 100000)
+                            </div>
                         </div>
                     </div>
                     <div class="d-grid">
@@ -146,9 +147,6 @@
                     return;
                 }
 
-                // Get the success message from the response headers
-                const successMessage = response.headers.get("X-Success-Message") || "Email scraping completed successfully!";
-
                 // Get the filename from the response headers
                 const contentDisposition = response.headers.get('Content-Disposition');
                 let filename = 'scraped_authors.csv';
@@ -174,10 +172,10 @@
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
 
-                showAlert(successMessage, 'success');
+                showAlert('Email scraping completed successfully!', 'success');
                 resultsOutput.innerHTML = `
                     <div class="alert alert-success">
-                        <i class="bi bi-check-circle"></i> ${successMessage}
+                        <i class="bi bi-check-circle"></i> Your scraped data has been downloaded as a CSV file.
                     </div>
                 `;
             } catch (error) {
