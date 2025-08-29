@@ -49,6 +49,7 @@ def log_memory_usage():
 def send_email(
     subjectForEmail: str,
     sender_email: str,
+    sender_name: str,
     sender_password: str,
     recipient_name: str,
     recipient_email: str,
@@ -64,12 +65,18 @@ def send_email(
 
     msg = MIMEMultipart('alternative')
     msg['Subject'] = formatted_subject
-    msg['From'] = formataddr(("Your App Name", sender_email))
+    msg['From'] = formataddr((sender_name, sender_email))
     msg['To'] = formataddr((recipient_name, recipient_email))
     msg.attach(MIMEText(html, 'html'))
 
     try:
-        context = ssl.create_default_context()
+        if smtp_server in ["smtp.gmail.com", "smtp.office365.com", "smtp.mail.yahoo.com"]:
+            context = ssl.create_default_context()
+        else:
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+        
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls(context=context)
             server.login(sender_email, sender_password)
@@ -130,11 +137,12 @@ async def process_csv_and_send_emails(
     subjectForEmail: str,
     csv_file_path: str,
     sender_email: str,
+    sender_name: str,
     sender_password: str,
     smtp_server: str,
     smtp_port: int,
     template_content: str,
-    max_emails: Optional[int] = None,
+    max_emails: int,
     delay: int = 5
 ) -> tuple[list[dict], dict, Optional[str]]:
     """Process CSV file and send emails to authors."""
@@ -151,8 +159,11 @@ async def process_csv_and_send_emails(
         with open(csv_file_path, 'r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
             csv_rows = list(reader)
-
-            max_emails_actual = len(csv_rows) if max_emails is None else min(max_emails, len(csv_rows))
+            
+            if max_emails == 0:
+                max_emails_actual = len(csv_rows)
+            else:
+                max_emails_actual = len(csv_rows) if max_emails is None else min(max_emails, len(csv_rows))
 
             print(f"\nStarting to process {max_emails_actual} emails with {delay} second delays...")
 
@@ -206,7 +217,7 @@ async def process_csv_and_send_emails(
                     print(f"    ✓ Valid - Attempting to send email to {email} via {smtp_server}:{smtp_port}...")
 
                     success, message = send_email(
-                        subjectForEmail, sender_email, sender_password, name, email,
+                        subjectForEmail, sender_email, sender_name, sender_password, name, email,
                         journal, article_title, smtp_server, smtp_port, template_content
                     )
 
@@ -570,7 +581,7 @@ def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000):
         batches_processed = 0
 
         # Process in smaller batches to avoid URL length issues
-        batch_size = 100
+        batch_size = 200
         
         for i in range(0, len(article_ids), batch_size):
             # Check if we've reached the maximum number of authors
@@ -705,12 +716,13 @@ async def send_emails_endpoint(
     email_template_file: UploadFile = File(...),
     subjectForEmail: str = Form(...),
     sender_email: EmailStr = Form(...),
+    sender_name: str = Form(...),
     sender_password: str = Form(...),
     smtp_server_option: str = Form(...),
     custom_smtp_server: Optional[str] = Form(None),
     smtp_port_option: str = Form(...),
-    custom_smtp_port: Optional[int] = Form(None),
-    max_emails: Optional[int] = Form(None),
+    custom_smtp_port: Optional[str] = Form(None),
+    max_emails: int = Form(...),
     delay: int = Form(5),
 ):
     if not csv_file.filename or not csv_file.filename.lower().endswith('.csv'):
@@ -773,6 +785,7 @@ async def send_emails_endpoint(
             subjectForEmail=subjectForEmail,
             csv_file_path=temp_csv_file_path,
             sender_email=sender_email,
+            sender_name=sender_name,
             sender_password=sender_password,
             smtp_server=smtp_server,
             smtp_port=smtp_port,
