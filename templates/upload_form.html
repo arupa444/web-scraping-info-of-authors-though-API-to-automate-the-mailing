@@ -70,16 +70,18 @@ LAN<br>or<br>Use a different network(Your mobile hotspot or different network){%
                             <div class="col-md-6 mb-3">
                                 <label for="smtp_server_option" class="form-label required-field">SMTP Server</label>
                                 <select class="form-select" id="smtp_server_option" name="smtp_server_option" required>
+                                    <option value="" selected disabled>Choose Server</option>
+                                    <option value="universal">Universal (smtp.yourdomain.com)</option>
                                     <option value="gmail">Gmail (smtp.gmail.com)</option>
                                     <option value="outlook">Outlook (smtp.office365.com)</option>
                                     <option value="yahoo">Yahoo (smtp.mail.yahoo.com)</option>
-                                    <option value="universal">Universal (smtp.yourdomain.com)</option>
                                     <option value="other">Other (specify below)</option>
                                 </select>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="smtp_port_option" class="form-label required-field">SMTP Port</label>
                                 <select class="form-select" id="smtp_port_option" name="smtp_port_option" required>
+                                    <option value="" selected disabled>Choose Port</option>
                                     <option value="587">587 (TLS, Recommended)</option>
                                     <option value="465">465 (SSL)</option>
                                     <option value="25">25 (Unencrypted, Rarely Used)</option>
