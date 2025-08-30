@@ -41,11 +41,6 @@ web-scraping-info-of-authors-though-API-to-automate-the-mailing/
 
 └─ webscrap and email automation Process.txt  # Notes/process outline
 
-````
-
-> The file list above reflects what’s visible in the repo. If you add/remove files, update this section accordingly. :contentReference[oaicite:1]{index=1}
-
----
 
 ## ✅ Prerequisites
 
