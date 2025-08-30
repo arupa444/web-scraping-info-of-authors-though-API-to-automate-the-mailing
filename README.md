@@ -22,6 +22,7 @@ The unified entry point is **`autoMailApp.py`** — it guides you through scrapi
 
 
 web-scraping-info-of-authors-though-API-to-automate-the-mailing/
+
 ├─ autoMailApp.py                        # ⭐ Main entry point (interactive end-to-end)
 
 ├─ scrapName.py                          # PubMed scraping → CSV
