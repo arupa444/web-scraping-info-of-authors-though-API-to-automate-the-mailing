@@ -89,7 +89,12 @@ MAX_RECORDS=200
 ### 1) Run the end-to-end app
 
 ```bash
-python autoMailApp.py
+#to start the server locally
+#recommended:
+uvicorn autoMailApp:app --reload
+
+#if you think the port is busy the try:
+uvicorn autoMailApp:app --reload --port 8002 #(you can use port from 8000 - 8005) thats on you
 ```
 
 You’ll typically be prompted to:
