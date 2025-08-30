@@ -14,9 +14,10 @@
 * [How it works (high level)](#how-it-works-high-level)
 * [Usage — quick start](#usage--quick-start)
 
-  * [1) Scrape authors (CLI)](#1-scrape-authors-cli)
-  * [2) Validate / filter emails (CLI or UI)](#2-validate--filter-emails-cli-or-ui)
-  * [3) Send emails (CLI or UI)](#3-send-emails-cli-or-ui)
+  * [1) FastAPI (Web UI)](#1-fastapi-web-ui)
+  * [2) Scrape authors (CLI)](#2-scrape-authors-cli)
+  * [3) Validate / filter emails (CLI or UI)](#3-validate--filter-emails-cli-or-ui)
+  * [4) Send emails (CLI or UI)](#4-send-emails-cli-or-ui)
 * [CSV format & templates](#csv-format--templates)
 * [Web UI endpoints (FastAPI)](#web-ui-endpoints-fastapi)
 * [Operational notes & best practices](#operational-notes--best-practices)
@@ -132,7 +133,7 @@ FROM_NAME=Your Name or Organization
 ## Usage — quick start
 
 
-# 1) FastAPI (Web UI)
+## 1) FastAPI (Web UI)
 ****
 
 Start the app and use the browser-based interface to upload CSVs and templates, preview personalized messages, and send in controlled batches.
@@ -233,7 +234,6 @@ Jane Roe,jane@university.edu,Medical Journal,AI in Healthcare
 1. Scrape author emails from PubMed with a keyword (e.g., "machine learning").
 2. Filter the extracted CSV to keep only **deliverable** emails.
 3. Send personalized emails using an HTML template.
-
 
 
 
