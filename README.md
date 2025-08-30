@@ -93,7 +93,7 @@ MAX_RECORDS=200
 #recommended:
 uvicorn autoMailApp:app --reload
 
-#if you think the port is busy the try:
+#if you think the port is busy then try:
 uvicorn autoMailApp:app --reload --port 8002 #(you can use port from 8000 - 8005) thats on you
 ```
 
