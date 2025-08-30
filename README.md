@@ -237,7 +237,7 @@ Jane Roe,jane@university.edu,Medical Journal,AI in Healthcare
 
 
 
-### 2) Scrape authors (CLI)
+## 2) Scrape authors (CLI)
 
 ```bash
 python scrapName.py "machine learning in cardiology"
@@ -246,7 +246,7 @@ python scrapName.py "machine learning in cardiology"
 * Output: `<search_term>_authors_with_emails.csv` with columns such as `name`, `journal`, `article_title`, `emails`, `affiliations`.
 * Notes: The script uses NCBI Entrez `esearch`/`efetch`. If you have a `NCBI_API_KEY` in `.env` the script will use it to increase rate limits.
 
-### 3) Validate / filter emails (CLI or UI)
+## 3) Validate / filter emails (CLI or UI)
 
 **CLI:**
 
@@ -257,7 +257,7 @@ python emailFilter.py
 
 **UI:** Start the FastAPI UI (below) and go to the **Email Filter** page to upload CSVs and run validations.
 
-### 4) Send emails (CLI or UI)
+## 4) Send emails (CLI or UI)
 
 **CLI (example)**
 
