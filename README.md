@@ -23,13 +23,21 @@ The unified entry point is **`autoMailApp.py`** — it guides you through scrapi
 
 web-scraping-info-of-authors-though-API-to-automate-the-mailing/
 ├─ autoMailApp.py                        # ⭐ Main entry point (interactive end-to-end)
+
 ├─ scrapName.py                          # PubMed scraping → CSV
+
 ├─ automateEmailing.py                   # Legacy/alternate email sender
+
 ├─ emailFilter.py                        # Utility for filtering/cleaning emails from CSV
+
 ├─ for\_automate\_authentic\_email\_google\_yahoo\_office.py  # SMTP auth/provider helper
+
 ├─ templates/                            # HTML email templates (edit your outreach copy here)
+
 ├─ requirements.txt                      # Python deps
+
 ├─ try.csv                               # Example/placeholder CSV
+
 └─ webscrap and email automation Process.txt  # Notes/process outline
 
 ````
