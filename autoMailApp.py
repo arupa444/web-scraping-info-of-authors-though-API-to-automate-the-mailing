@@ -2,8 +2,9 @@ from fastapi import FastAPI, APIRouter, Request, UploadFile, File, Form, HTTPExc
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import EmailStr
-from typing import Optional
+from typing import Annotated, Literal, Optional, List, Dict
 
+from pydantic import BaseModel, Field, field_validator, computed_field, AnyUrl, EmailStr
 import requests
 from urllib.parse import quote
 import xml.etree.ElementTree as ET
@@ -28,6 +29,48 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(title="Email Tools Application for Pulsus")
+
+
+
+
+class SendEndpoint(BaseModel):
+    csv_file: Annotated[UploadFile, File(..., title="CSV File", description="Upload the CSV File...")]
+    email_template_file: Annotated[UploadFile, File(..., title="Email Template", description="Upload the Email Template...")]
+    subjectForEmail: Annotated[str, Form(..., title="Subject for email", description="Enter the subject for the email...")]
+    sender_email: Annotated[EmailStr, Form(..., title="Sender's email", description="Enter the sender's email...")]
+    sender_name: Annotated[str, Form(..., title="Sender's name", description="Enter the sender's name...")]
+    sender_password: Annotated[str, Form(..., title="Sender's email password", description="Enter the sender's email password...")]
+    smtp_server_option: Annotated[str, Form(..., title="SMTP server Option", description="Select the SMTP Server...")]
+    custom_smtp_server: Annotated[Optional[str], Form(default=None,title="Custom SMTP server", description="Enter the custom SMTP server...")]
+    smtp_port_option: Annotated[str, Form(...,title="SMTP port option...", description="Select the SMTP port...")]
+    custom_smtp_port: Annotated[Optional[str], Form(default=None, title="Custom SMTP Port...", description="Enter a custom SMTP Port...")]
+    max_emails: Annotated[int, Form(..., title="Max Email to send", description="Enter a int which gonna limit the email sharing...")]
+    delay: Annotated[int, Form(default=5, title="The delay inbetween two mails", description="Enter the delay you want to create which gonna reflect inbetween two mail sending...")]
+
+
+class ScrapeEmail(BaseModel):
+    search_term: Annotated[str, Field(..., title="Search Term", description="Enter the Search Term...")]
+    max_authors: Annotated[Optional[int], Field(default=10000, title="Maximum authors to search", description="Enter The No. of authors you want to search...")]
+
+
+class FilterEmail(BaseModel):
+    csv_file: UploadFile = File(..., title="CSV File", description="Upload the CSV File")
+    sender_email: EmailStr = Form(..., title="Sender's email", description="Enter the sender's email")
+    resume: bool = Form(False, title="Resume the steps", description="Resume from last checkpoint")
+
+@app.get("/", response_class=HTMLResponse, summary="Serve the email sender HTML form")
+def get_email_form(request: Request):
+    return templates.TemplateResponse("upload_form.html", {"request": request, "active_page": "sender"})
+
+@app.get("/email-filter", response_class=HTMLResponse, summary="Serve the email filter HTML form")
+def get_email_filter_form(request: Request):
+    return templates.TemplateResponse("email_filter.html", {"request": request, "active_page": "filter"})
+
+@app.get("/email-scraper", response_class=HTMLResponse, summary="Serve the email scraper HTML form")
+def get_email_scraper_form(request: Request):
+    return templates.TemplateResponse("email_scraper.html", {"request": request, "active_page": "scraper"})
+
+
 
 # Configure Jinja2Templates to find templates in the "templates" directory
 templates = Jinja2Templates(directory="templates")
@@ -299,7 +342,7 @@ def has_mx_record_filter(domain):
     except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
         return False
 
-def check_smtp_filter(email):
+def check_smtp_filter(email, sender_email):
     """Check if SMTP server accepts the email"""
     domain = email.split('@')[1]
     try:
@@ -310,7 +353,7 @@ def check_smtp_filter(email):
         server.set_debuglevel(0)
         server.connect(mx_record)
         server.helo(server.local_hostname)
-        server.mail('test@example.com')
+        server.mail(sender_email)
         code, message = server.rcpt(email)
         server.quit()
 
@@ -318,7 +361,7 @@ def check_smtp_filter(email):
     except Exception as e:
         return False
 
-def validate_email_filter(email):
+def validate_email_filter(email, sender_email):
     if not is_valid_syntax_filter(email):
         return "Invalid syntax"
 
@@ -326,12 +369,12 @@ def validate_email_filter(email):
     if not has_mx_record_filter(domain):
         return "Domain not found / no MX record"
 
-    if check_smtp_filter(email):
+    if check_smtp_filter(email, sender_email):
         return "Deliverable"
     else:
         return "Non-deliverable"
 
-def process_csv_file_filter(input_path, checkpoint_file=None):
+def process_csv_file_filter(input_path, sender_email, checkpoint_file=None):
     # Generate output filename
     base_name = os.path.basename(input_path)
     file_name, file_ext = os.path.splitext(base_name)
@@ -382,7 +425,7 @@ def process_csv_file_filter(input_path, checkpoint_file=None):
             print(f"Validating email {total_rows}: {email}")
             
             try:
-                result = validate_email_filter(email)
+                result = validate_email_filter(email, sender_email)
                 print(f"Result: {result}")
 
                 if result == "Deliverable":
@@ -704,13 +747,8 @@ def export_to_csv_scrape(data, filename):
 # ====================================================================
 
 # Email Sender Router
-email_sender_router = APIRouter(prefix="/email-sender")
 
-@email_sender_router.get("/", response_class=HTMLResponse, summary="Serve the email sender HTML form")
-async def get_email_form(request: Request):
-    return templates.TemplateResponse("upload_form.html", {"request": request, "active_page": "sender"})
-
-@email_sender_router.post("/send", summary="Process CSV and send emails")
+@app.post("/email-sender/send", summary="Process CSV and send emails")
 async def send_emails_endpoint(
     csv_file: UploadFile = File(...),
     email_template_file: UploadFile = File(...),
@@ -815,16 +853,15 @@ async def send_emails_endpoint(
             print(f"Temporary CSV file removed: {temp_csv_file_path}")
 
 # Email Filter Router
-email_filter_router = APIRouter(prefix="/email-filter")
 
-@email_filter_router.get("/", response_class=HTMLResponse, summary="Serve the email filter HTML form")
-async def get_email_filter_form(request: Request):
-    return templates.TemplateResponse("email_filter.html", {"request": request, "active_page": "filter"})
 
-@email_filter_router.post("/process", summary="Process CSV and filter emails")
+
+
+@app.post("/email-filter/process", summary="Process CSV and filter emails")
 async def filter_emails_endpoint(
     csv_file: UploadFile = File(...),
-    resume: bool = Form(False),
+    sender_email: EmailStr = Form(...),
+    resume: bool = Form(False)
 ):
     if not csv_file.filename or not csv_file.filename.lower().endswith('.csv'):
         raise HTTPException(status_code=400, detail="Please upload a valid CSV file.")
@@ -851,7 +888,7 @@ async def filter_emails_endpoint(
                 raise HTTPException(status_code=400, detail="No checkpoint file found to resume from.")
         
         # Process the CSV file to filter emails
-        filtered_file_path = process_csv_file_filter(temp_csv_file_path, checkpoint_file)
+        filtered_file_path = process_csv_file_filter(temp_csv_file_path, sender_email, checkpoint_file)
 
         # Return the filtered file
         return FileResponse(
@@ -871,13 +908,10 @@ async def filter_emails_endpoint(
             print(f"Temporary CSV file removed: {temp_csv_file_path}")
 
 # Email Scraper Router
-email_scraper_router = APIRouter(prefix="/email-scraper")
 
-@email_scraper_router.get("/", response_class=HTMLResponse, summary="Serve the email scraper HTML form")
-async def get_email_scraper_form(request: Request):
-    return templates.TemplateResponse("email_scraper.html", {"request": request, "active_page": "scraper"})
 
-@email_scraper_router.post("/scrape", summary="Scrape author emails from PubMed")
+
+@app.post("/email-scraper/scrape", summary="Scrape author emails from PubMed")
 async def scrape_emails_endpoint(
     search_term: str = Form(...),
     max_authors: int = Form(10000),
@@ -927,17 +961,3 @@ async def scrape_emails_endpoint(
     except Exception as e:
         print(f"An unexpected error occurred in scrape_emails_endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
-
-# Include the routers in the main FastAPI app
-app.include_router(email_sender_router)
-app.include_router(email_filter_router)
-app.include_router(email_scraper_router)
-
-@app.get("/", response_class=HTMLResponse, summary="Root endpoint")
-async def root():
-    return """
-    <h1>Welcome to the Email Tools API!</h1>
-    <p>Go to <a href="/email-sender/">/email-sender/</a> to access the email sending form.</p>
-    <p>Go to <a href="/email-filter/">/email-filter/</a> to access the email filtering tool.</p>
-    <p>Go to <a href="/email-scraper/">/email-scraper/</a> to access the email scraping tool.</p>
-    """
