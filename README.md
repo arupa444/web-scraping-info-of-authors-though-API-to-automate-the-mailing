@@ -58,7 +58,7 @@ Install dependencies:
 
 ```bash
 pip install -r requirements.txt
-````
+```
 
 > If `requirements.txt` is minimal (e.g., just `requests`), that’s because the email stack uses Python’s standard library (`smtplib`, `email.mime`, etc.).
 
