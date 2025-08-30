@@ -131,7 +131,113 @@ FROM_NAME=Your Name or Organization
 
 ## Usage — quick start
 
-### 1) Scrape authors (CLI)
+
+# 1) FastAPI (Web UI)
+****
+
+Start the app and use the browser-based interface to upload CSVs and templates, preview personalized messages, and send in controlled batches.
+And if you are using this then you don't have to set a .env file.
+
+### Running the Application
+
+```bash
+uvicorn autoMailApp:app --reload
+```
+```bash
+# if you think your default port is busy the use:
+uvicorn autoMailApp:app --reload --port 8002 # you can use any port inbetween 8000 to 8005 recommended
+```
+
+Then open: **[http://127.0.0.1:8000/](http://127.0.0.1:8000/)**
+
+
+### AutoMailApp – Email Tools Application for Pulsus
+
+AutoMailApp is a **FastAPI-based application** designed to simplify email-related workflows for research communication and outreach. It provides a **web interface and APIs** to:
+
+* 📤 Send personalized emails in bulk from CSV + HTML templates.
+* 🔍 Scrape author contact details from **PubMed**.
+* 🛠️ Filter and validate email addresses for deliverability.
+
+This tool is built to automate mailing for journals, publishers, and research organizations.
+
+---
+
+### Features
+
+* **Email Sender**
+
+  * Upload a CSV file of authors.
+  * Use an HTML email template with placeholders (`{name}`, `{journal}`, `{article_title}`).
+  * Configurable SMTP server (Gmail, Outlook, Yahoo, Universal, Custom).
+  * Supports sending limits and delays between messages.
+  * Provides a full summary (success, failed, validation breakdown).
+
+* **Email Filter**
+
+  * Upload CSV with email addresses.
+  * Validates syntax, MX records, and SMTP acceptance.
+  * Generates a **filtered CSV** with only deliverable emails.
+  * Supports resuming from last checkpoint for large files.
+
+* **Email Scraper**
+
+  * Scrapes author emails from **PubMed articles (last 5 years)**.
+  * Extracts names, affiliations, journals, article titles, and emails.
+  * Removes duplicates and ensures unique results.
+  * Exports author details into a structured CSV.
+
+---
+
+
+---
+
+### API Endpoints
+
+### 1. **Email Sender**
+
+* `POST /email-sender/send`
+  Upload CSV + HTML template and send personalized emails.
+
+### 2. **Email Filter**
+
+* `POST /email-filter/process`
+  Upload CSV of emails and filter out invalid/non-deliverable ones.
+
+### 3. **Email Scraper**
+
+* `POST /email-scraper/scrape`
+  Provide a **search term** and fetch authors’ emails from PubMed.
+
+---
+
+### CSV Format Requirements
+
+### For Email Sending:
+
+```csv
+name,emails,journal,article_title
+John Doe,john@example.com,Journal of AI,Deep Learning in Practice
+Jane Roe,jane@university.edu,Medical Journal,AI in Healthcare
+```
+
+* **name** → Author name
+* **emails** → Single or multiple emails (semicolon `;` separated)
+* **journal** → Journal name
+* **article\_title** → Article title
+
+---
+
+### Example Workflow
+
+1. Scrape author emails from PubMed with a keyword (e.g., "machine learning").
+2. Filter the extracted CSV to keep only **deliverable** emails.
+3. Send personalized emails using an HTML template.
+
+
+
+
+### 2) Scrape authors (CLI)
 
 ```bash
 python scrapName.py "machine learning in cardiology"
@@ -140,7 +246,7 @@ python scrapName.py "machine learning in cardiology"
 * Output: `<search_term>_authors_with_emails.csv` with columns such as `name`, `journal`, `article_title`, `emails`, `affiliations`.
 * Notes: The script uses NCBI Entrez `esearch`/`efetch`. If you have a `NCBI_API_KEY` in `.env` the script will use it to increase rate limits.
 
-### 2) Validate / filter emails (CLI or UI)
+### 3) Validate / filter emails (CLI or UI)
 
 **CLI:**
 
@@ -151,7 +257,7 @@ python emailFilter.py
 
 **UI:** Start the FastAPI UI (below) and go to the **Email Filter** page to upload CSVs and run validations.
 
-### 3) Send emails (CLI or UI)
+### 4) Send emails (CLI or UI)
 
 **CLI (example)**
 
@@ -161,18 +267,7 @@ python automateEmailing.py
 
 `automateEmailing.py` will prompt for parameters (subject, template file, SMTP credentials if not provided in `.env`, etc.) and will create a `<input>_results.csv` containing per-recipient status and messages.
 
-**FastAPI (Web UI)**
-
-Start the app and use the browser-based interface to upload CSVs and templates, preview personalized messages, and send in controlled batches.
-
-```bash
-uvicorn autoMailApp:app --reload --host 0.0.0.0 --port 8000
-```
-
-Open `http://localhost:8000/` in your browser.
-
 ---
-
 ## CSV format & templates
 
 ### Required CSV columns (recommended)
