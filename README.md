@@ -1,4 +1,4 @@
-```markdown
+
 # Author Outreach Automation (PubMed Scraper → Email Sender)
 
 Automate academic outreach in two steps: **scrape authors + emails from PubMed** and **send personalized emails** using a configurable HTML template.  
@@ -20,7 +20,6 @@ The unified entry point is **`autoMailApp.py`** — it guides you through scrapi
 
 ## 🧩 Repository structure
 
-```
 
 web-scraping-info-of-authors-though-API-to-automate-the-mailing/
 ├─ autoMailApp.py                        # ⭐ Main entry point (interactive end-to-end)
