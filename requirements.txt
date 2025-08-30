@@ -1,7 +1,10 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
 requests
 dnspython
-fastapi
 pydantic
-dotenv
-uvicorn
+pydantic[email]
+python-dotenv
 psutil
