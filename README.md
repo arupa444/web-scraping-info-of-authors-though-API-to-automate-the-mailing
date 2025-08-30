@@ -1,226 +1,260 @@
-# Web scraping info of authors though API and email automation
+```markdown
+# Author Outreach Automation (PubMed Scraper → Email Sender)
 
-![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)
+Automate academic outreach in two steps: **scrape authors + emails from PubMed** and **send personalized emails** using a configurable HTML template.  
+The unified entry point is **`autoMailApp.py`** — it guides you through scraping, validating, and sending in an interactive flow.
 
-A powerful two-part Python toolset to automate academic outreach. This project helps you find relevant authors on PubMed based on a research topic and then send them personalized emails for collaboration inquiries.
+> Ideal for research groups, editors, and collaborators who need **targeted**, **personalized**, and **logged** outreach.
 
-## Table of Contents
+---
 
-- [Description](#description)
-- [Features](#features)
-- [How It Works](#how-it-works)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [Step 1: Scrape Authors from PubMed](#step-1-scrape-authors-from-pubmed)
-  - [Step 2: Send Automated Emails](#step-2-send-automated-emails)
-- [Configuration](#configuration)
-- [Disclaimer](#disclaimer)
-- [Contributing](#contributing)
-- [License](#license)
+## ✨ What this tool does
 
-## Description
+- **Scrape authors from PubMed** for a given topic/keyword
+- **Extract & clean emails** (CSV output you can review)
+- **Send personalized emails** via SMTP (Gmail/Outlook/Office365/Yahoo or custom)
+- **Log results** (delivered / failed / error messages) to a separate CSV
+- **Throttle safely** (configurable delays and per-run caps)
 
-This project provides a streamlined workflow for academic and professional outreach. It consists of two main Python scripts:
+---
 
-1.  **`scrapName.py`**: A script that connects to the NCBI PubMed API to search for articles based on a specific keyword. It extracts detailed author information, including names, affiliations, journal, article title, and most importantly, email addresses. The data is saved to a well-structured CSV file.
+## 🧩 Repository structure
 
-2.  **`automaticEmailing.py`**: A script that uses the CSV file from the scraper to send personalized emails. It uses a customizable HTML template, securely handles your email credentials, and allows you to configure sending limits and delays to ensure responsible outreach.
+```
 
-This tool is perfect for researchers, students, and professionals looking to build connections, explore collaborations, or conduct targeted outreach within the academic community.
+web-scraping-info-of-authors-though-API-to-automate-the-mailing/
+├─ autoMailApp.py                        # ⭐ Main entry point (interactive end-to-end)
+├─ scrapName.py                          # PubMed scraping → CSV
+├─ automateEmailing.py                   # Legacy/alternate email sender
+├─ emailFilter.py                        # Utility for filtering/cleaning emails from CSV
+├─ for\_automate\_authentic\_email\_google\_yahoo\_office.py  # SMTP auth/provider helper
+├─ templates/                            # HTML email templates (edit your outreach copy here)
+├─ requirements.txt                      # Python deps
+├─ try.csv                               # Example/placeholder CSV
+└─ webscrap and email automation Process.txt  # Notes/process outline
 
-## Scripts Overview
+````
 
-### 1. PubMed Email Extractor (`pubmed_search.py`)
-- Searches PubMed for articles related to a specific topic
-- Extracts author names, email addresses, affiliations, and article details
-- Filters results to include only articles from the last 5 years
-- Exports data to a CSV file
+> The file list above reflects what’s visible in the repo. If you add/remove files, update this section accordingly. :contentReference[oaicite:1]{index=1}
 
-### 2. Automated Email Sender (`email_automation.py`)
-- Reads author data from CSV files
-- Sends personalized emails to authors
-- Tracks delivery status and saves results
+---
 
-## Requirements
+## ✅ Prerequisites
 
-- Python 3.6 or higher
-- Only external dependency: `requests` (install with `pip install requests`)
+- **Python** 3.8+ (3.10/3.11 recommended)
+- An email account that supports SMTP (Gmail, Outlook/Office365, Yahoo, or custom SMTP)
+  - For Gmail/Outlook, use an **App Password** (recommended) instead of your main password
+- Network access to NCBI E-utilities (for PubMed search)
 
-## Installation
+Install dependencies:
 
-1. Clone or download this repository
-2. Install the required package:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Features
-
--   **Targeted Search**: Find authors based on specific research keywords.
--   **Automated Data Scraping**: Efficiently collects author contact details from PubMed.
--   **Email Extraction**: Intelligently parses affiliation data to find email addresses.
--   **CSV Export**: Saves cleaned data in a universally compatible CSV format.
--
--   **Personalized Emailing**: Uses an HTML template to dynamically insert author-specific details.
--   **Secure & Configurable**: Handles email credentials securely and supports standard SMTP providers (Gmail, Outlook, etc.).
--   **Responsible Sending**: Includes configurable delays and sending limits to avoid spamming.
--   **Logging & Reporting**: Tracks the status of every email sent and saves the results to a separate CSV log file.
-
-## How It Works
-
-1.  **Run `scrapName.py`** with a search term (e.g., "crispr gene editing").
-2.  The script queries the PubMed database, fetches article details, and extracts author information for authors with available emails.
-3.  It generates a CSV file named `your_search_term_authors_with_emails.csv`.
-4.  **Run `automaticEmailing.py`**, providing the path to the generated CSV file and your email credentials.
-5.  The script reads the CSV and sends personalized emails one by one, respecting the delay you set.
-6.  Finally, it creates a `_results.csv` file to log the outcome of each email sent.
-
-## Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/arupa444/web-scraping-info-of-authors-though-API-to-automate-the-mailing.git
-    cd web-scraping-info-of-authors-though-API-to-automate-the-mailing
-    ```
-
-2.  **Install the required Python libraries:**
-    This project uses the `requests` library. You can install it using pip.
-    ```bash
-    pip install requests
-    ```
-    No other external libraries are required beyond the standard Python library.
-
-## Usage
-
-Follow these two steps to perform your outreach campaign.
-
-### Step 1: Scrape Authors from PubMed
-
-Open your terminal or command prompt and run `scrapName.py` with your desired search term enclosed in quotes.
-
-**Syntax:**
 ```bash
-python scrapName.py "your search term"
+pip install -r requirements.txt
+````
+
+> If `requirements.txt` is minimal (e.g., just `requests`), that’s because the email stack uses Python’s standard library (`smtplib`, `email.mime`, etc.).
+
+---
+
+## ⚙️ Configuration
+
+You can run fully **interactive** (prompts will ask everything), or prepare a small `.env` file in the project root to reduce typing:
+
+```env
+# .env (optional)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=you@example.com
+SMTP_PASSWORD=your_app_password
+
+# Sending controls
+MAX_EMAILS_PER_RUN=50
+SEND_DELAY_SECONDS=8
+
+# Defaults for scraping
+SEARCH_TERM=cancer immunotherapy
+YEARS_BACK=5
+MAX_RECORDS=200
 ```
 
-**Example:**
+> If you don’t want a `.env`, just run interactively and paste values when prompted.
+
+---
+
+## 🏁 Quick Start (recommended path)
+
+### 1) Run the end-to-end app
+
 ```bash
-python scrapName.py "cancer immunotherapy"
+python autoMailApp.py
 ```
 
-The script will print its progress and, upon completion, you will find a new CSV file in the same directory (e.g., `cancer_immunotherapy_authors_with_emails.csv`).
+You’ll typically be prompted to:
 
-### Step 2: Send Automated Emails
+1. **Choose a mode**
 
-Once you have your CSV file, run the `automaticEmailing.py` script. It will interactively prompt you for the necessary information.
+   * `Scrape` authors → produce a CSV
+   * `Send` emails from an existing CSV
+   * `Pipeline` (scrape → send in one flow)
+2. **Provide scraping inputs**
 
-**Run the script:**
-```bash
-python automaticEmailing.py
-```
+   * Topic/keyword (e.g., `"graph neural networks"`)
+   * Years window (e.g., `5`)
+   * Optional caps/limits
+3. **Provide email inputs**
 
-You will be asked to provide the following:
-1.  **Path to your CSV file**: The file generated in Step 1.
-2.  **Your email address**: The email you want to send from.
-3.  **Your email password**: Your password will be hidden for security. **Note:** For Gmail, you may need to generate an "App Password".
-4.  **SMTP server choice**: Choose from a list of common providers or enter a custom one.
-5.  **Maximum number of emails to send**: To control the volume of your campaign.
-6.  **Delay between emails**: The number of seconds to wait between sending each email.
+   * Path to CSV with emails (if you didn’t just scrape)
+   * SMTP server (`smtp.gmail.com`, `smtp.office365.com`, `smtp.mail.yahoo.com`, or custom)
+   * SMTP username & app password
+   * Max emails per run & per-email delay (anti-spam/limits)
+   * **Template selection** from `/templates`
 
-After you confirm the details, the script will begin the sending process and create a results file (e.g., `cancer_immunotherapy_authors_with_emails_results.csv`) when finished.
+The app will:
 
-## Configuration
+* Save **scraped authors** to CSV (e.g., `graph_neural_networks_authors_with_emails.csv`)
+* Send emails (respecting your delay and cap)
+* Create a **results log CSV** (e.g., `graph_neural_networks_authors_with_emails_results.csv`)
 
-The email template can be easily customized. Open `yourHTML.html`. You can edit the `html` variable to change the subject, body, and signature of the email.
+---
 
-```HTML
-    html = f"""
-    <html>
-    <body>
-        <p>Dear Dr. {recipient_name.split()[-1]},</p>
-        
-        <p>I hope this email finds you well. My name is [Your Name] and I'm a [Your Position] at [Your Institution].
-        I came across your fascinating research titled "<strong>{article_title}</strong>" in <em>{journal}</em>.</p>
-        
-        <!-- Customize the rest of the email content here -->
-        
-        <p>Best regards,<br>
-        [Your Full Name]</p>
-    </body>
-    </html>
-    """
-    # ...
-```
+## 🧪 Alternate / Advanced scripts
 
-Remember to replace placeholders like `[Your Name]`, `[Your Position]`, etc., with your actual information.
+* **`scrapName.py`** — Directly scrape PubMed into a CSV (run this if you only want data).
+* **`automateEmailing.py`** — Standalone sender if you already have a CSV and want a focused CLI for sending.
+* **`emailFilter.py`** — Clean up CSV emails (dedupe, simple validation, optional domain filters).
+* **`for_automate_authentic_email_google_yahoo_office.py`** — Handy for testing SMTP provider logins and settings.
 
+> You can use these utilities independently, but most users should stick with `autoMailApp.py`.
 
-## Output Files
+---
 
-1. **Author Data CSV**: `[search_term]_authors_with_emails.csv`
-   - Contains: name, journal, article_title, emails, affiliations
+## 📨 Email templates
 
-2. **Email Results CSV**: `[original_csv]_results.csv`
-   - Contains: name, email, journal, success status, error messages
+Templates live in **`templates/`**. They’re standard HTML (you can use simple placeholders, e.g., `{name}`, `{journal}`, `{article_title}` if the script supports string formatting).
 
-## Important Notes
+**Tips**
 
-1. **Email Sending Limits**:
-   - Be aware of your email provider's sending limits
-   - Gmail has a limit of 500 emails per day
-   - Consider using dedicated email services for large campaigns
+* Keep it short and personal
+* Mention the paper title and venue
+* Add a **polite opt-out** line at the end
+* Test send to yourself first
 
-2. **Ethical Considerations**:
-   - Only contact authors for legitimate academic purposes
-   - Include an unsubscribe option in your emails
-   - Comply with anti-spam regulations in your jurisdiction
+---
 
-3. **Rate Limiting**:
-   - The scripts include delays to avoid overwhelming servers
-   - Adjust these delays based on your needs and server policies
+## 📄 CSV schemas
 
-## Troubleshooting
+Your **scraped CSV** will typically contain columns like:
 
-### Common Issues
+| Column          | Description                        |
+| --------------- | ---------------------------------- |
+| `name`          | Author’s full name                 |
+| `email`         | Extracted/parsed email             |
+| `journal`       | Journal/venue                      |
+| `article_title` | Paper title                        |
+| `affiliation`   | Author affiliation                 |
+| `source_url`    | (If available) PubMed/article link |
 
-1. **"No articles found"**:
-   - Try a broader search term
-   - Check for typos in your search query
-   - Verify there are articles on your topic in the last 5 years
+Your **results CSV** (after sending) will typically add:
 
-2. **Email sending fails**:
-   - Verify your email credentials
-   - Check if you need to enable "less secure apps" or generate an app password
-   - Confirm your SMTP server settings
+| Column    | Description                     |
+| --------- | ------------------------------- |
+| `status`  | `sent` / `failed`               |
+| `error`   | SMTP / formatting errors if any |
+| `sent_at` | Timestamp                       |
 
-3. **CSV file errors**:
-   - Ensure the CSV file is in the correct format
-   - Check for special characters that might cause encoding issues
+> Exact column names may vary slightly — open the generated CSV to confirm.
 
-### Error Messages
+---
 
-The scripts provide detailed error messages to help diagnose issues. Check the console output for specific error information.
+## 🔐 SMTP notes
 
+* **Gmail:** `smtp.gmail.com:587` (TLS). Use an **App Password** (Google Account → Security → App Passwords).
+* **Outlook/Office365:** `smtp.office365.com:587` (TLS). App password or Modern Auth as applicable.
+* **Yahoo:** `smtp.mail.yahoo.com:587` (TLS). App password recommended.
+* **Custom SMTP:** Ask your provider for host/port/TLS and limits.
 
+**Respect provider limits** (Gmail \~500/day personal; Workspace/Office365 vary). Use `MAX_EMAILS_PER_RUN` and `SEND_DELAY_SECONDS` to avoid throttling.
 
+---
 
-## Disclaimer
+## 🧯 Troubleshooting
 
--   **Use Responsibly**: This tool is intended for legitimate research and professional collaboration inquiries. Do not use it for spam.
--   **API Usage**: The script respects NCBI's E-utils guidelines by including a delay between API requests. Abusing the API can lead to your IP address being temporarily or permanently blocked.
--   **Email Sending Limits**: Be mindful of your email provider's sending limits to avoid having your account flagged or suspended.
--   **Compliance**: Ensure your outreach complies with anti-spam legislation (e.g., CAN-SPAM, GDPR) applicable to you and your recipients. The default template includes an unsubscribe notice as a best practice.
+**`[Errno 11001] getaddrinfo failed`**
+DNS/host resolution issue. Double-check `SMTP_SERVER` (typo?), network, and port 587.
 
-## Contributing
+**`SMTPAuthenticationError`**
+Wrong username/app password, or app-password not enabled. For Gmail/Outlook/Yahoo, create an **App Password**.
 
-Contributions are welcome! If you have ideas for improvements or find a bug, please feel free to:
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Commit your changes (`git commit -m 'Add some feature'`).
-5.  Push to the branch (`git push origin feature/your-feature-name`).
-6.  Open a Pull Request.
+**No emails in scraped CSV**
 
-## License
+* Try broader keywords
+* Increase years window
+* Some PubMed entries lack emails — adjust filters or add a secondary extraction approach
 
-This project is open to use. Use this project and contribute in the project.
+**Mangled accents/Unicode**
+Open CSV with UTF-8. When sending, ensure `MIMEText(html, "html", "utf-8")`.
+
+**HTML renders as plain text**
+Send as `multipart/alternative` with HTML part; most of the included senders already do this.
+
+---
+
+## 🧼 Ethics & compliance
+
+Use this for **legitimate** academic/professional outreach only.
+Add an **opt-out** line and respect unsubscribe requests.
+Comply with applicable anti-spam laws (CAN-SPAM, GDPR, etc.).
+Throttle responsibly; respect PubMed/NCBI E-utilities policies.
+
+---
+
+## 🛠️ Development
+
+* Python style: keep things straightforward and cross-platform
+* Consider extracting constants (SMTP defaults, delays) to a `config.py` or `.env`
+* Add tests around:
+
+  * CSV read/write
+  * Basic email rendering (template → filled HTML)
+  * Dry-run mode (render-only, no send)
+
+**Nice-to-haves / Roadmap**
+
+* CLI flags for `autoMailApp.py` (non-interactive runs)
+* Retry/backoff on transient SMTP errors
+* Bounce handling + suppression list
+* Provider-aware rate limits
+* Parallel scraping with polite throttling
+
+---
+
+## 🤝 Contributing
+
+PRs welcome:
+
+1. Fork
+2. Branch: `feat/<name>` or `fix/<name>`
+3. Format & test
+4. Open PR with a clear description and before/after
+
+---
+
+## 📜 License
+
+Open use. If you adapt for production, add your preferred license file.
+
+---
+
+## 🙋 FAQ
+
+**Can I run only the sender with my own CSV?**
+Yes — point `autoMailApp.py` (or `automateEmailing.py`) to your CSV. Make sure there’s an `email` column.
+
+**Where do I change the email copy?**
+Edit the HTML in `templates/`. Keep variables consistent with what the sender fills (e.g., `{name}`, `{article_title}`).
+
+**How do I slow it down to be safe?**
+Increase `SEND_DELAY_SECONDS` and lower `MAX_EMAILS_PER_RUN`.
+
+**Does this support SSL-only SMTP (port 465)?**
+Yes, but prefer STARTTLS on 587 if your provider supports it. If you must, use `smtplib.SMTP_SSL` and adjust the port.
