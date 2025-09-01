@@ -90,27 +90,27 @@ def log_memory_usage():
 # ====================================================================
 
 def send_email(
+    row: Dict,  
     subjectForEmail: str,
     sender_email: str,
     sender_name: str,
     sender_password: str,
     recipient_name: str,
     recipient_email: str,
-    journal: str,
-    article_title: str,
     smtp_server: str,
     smtp_port: int,
     template_content: str
 ) -> tuple[bool, str]:
     """Send a personalized email to an author using HTML template."""
-    html = template_content.format(name=recipient_name, article_title=article_title, journal=journal)
-    formatted_subject = subjectForEmail.format(name=recipient_name, article_title=article_title, journal=journal)
+    html = template_content.format(**row)
+    formatted_subject = subjectForEmail.format(**row)
 
     msg = MIMEMultipart('alternative')
     msg['Subject'] = formatted_subject
     msg['From'] = formataddr((sender_name, sender_email))
     msg['To'] = formataddr((recipient_name, recipient_email))
     msg.attach(MIMEText(html, 'html'))
+    
 
     try:
         if smtp_server in ["smtp.gmail.com", "smtp.office365.com", "smtp.mail.yahoo.com"]:
@@ -214,16 +214,14 @@ async def process_csv_and_send_emails(
                 if i >= max_emails_actual:
                     break
 
-                required_cols = ['name', 'emails', 'journal', 'article_title']
+                required_cols = ['name', 'emails']
                 if not all(k in row for k in required_cols):
                     raise ValueError(f"CSV row {i+1} is missing required columns. Expected: {', '.join(required_cols)}. Row data: {row}")
-
+                
                 name = row['name']
-                emails_str = row['emails']
-                journal = row['journal']
-                article_title = row['article_title']
-
-                emails_list = [e.strip() for e in emails_str.split(';') if e.strip()]
+                emails = row['emails']
+                
+                emails_list = [e.strip() for e in emails.split(';') if e.strip()]
 
                 print(f"\nProcessing row {i + 1}/{max_emails_actual}: {name}")
 
@@ -250,8 +248,6 @@ async def process_csv_and_send_emails(
                         results.append({
                             'name': name,
                             'email': email,
-                            'journal': journal,
-                            'article_title': article_title,
                             'success': False,
                             'message': f"Validation failed: {validation_result_msg}"
                         })
@@ -260,15 +256,12 @@ async def process_csv_and_send_emails(
                     print(f"    ✓ Valid - Attempting to send email to {email} via {smtp_server}:{smtp_port}...")
 
                     success, message = send_email(
-                        subjectForEmail, sender_email, sender_name, sender_password, name, email,
-                        journal, article_title, smtp_server, smtp_port, template_content
+                        row, subjectForEmail, sender_email, sender_name, sender_password, name, email, smtp_server, smtp_port, template_content
                     )
 
                     result = {
                         'name': name,
                         'email': email,
-                        'journal': journal,
-                        'article_title': article_title,
                         'success': success,
                         'message': message
                     }
@@ -286,7 +279,7 @@ async def process_csv_and_send_emails(
     except FileNotFoundError:
         processing_error = f"CSV file not found at {csv_file_path}"
     except KeyError as e:
-        processing_error = f"Missing expected CSV column: {e}. Ensure CSV has 'name', 'emails', 'journal', 'article_title'."
+        processing_error = f"Missing expected CSV column: {e}. Ensure CSV has 'name', 'emails'."
     except ValueError as e:
         processing_error = f"CSV data error: {e}"
     except Exception as e:
@@ -729,14 +722,14 @@ def export_to_csv_scrape(data, filename):
         writer.writeheader()
 
         for author in data:
-            emails_str = '; '.join(author['emails']) if author['emails'] else ''
+            emails = '; '.join(author['emails']) if author['emails'] else ''
             affiliations_str = '; '.join(author['affiliations']) if author['affiliations'] else ''
 
             writer.writerow({
                 'name': author['name'],
                 'journal': author['journal'],
                 'article_title': author['article_title'],
-                'emails': emails_str,
+                'emails': emails,
                 'affiliations': affiliations_str
             })
     print(f"Data exported to {filename}")
