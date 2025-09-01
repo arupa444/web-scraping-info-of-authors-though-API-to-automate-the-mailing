@@ -5,8 +5,11 @@
 {% endblock %}
 
 {% block hero_title %}<i class="bi bi-envelope-paper-heart"></i> Automated Email Sender{% endblock %}
-{% block hero_subtitle %}For all the Pulsus domains and brands<br>Use VPN before run it, if you are using
-LAN<br>or<br>Use a different network(Your mobile hotspot or different network){% endblock %}
+{% block hero_subtitle %}For all the <b>Pulsus domains and brands</b><br>Use <b>VPN</b> before run it, if you are using
+<b>LAN</b><br>or<br>Use a different network(Your mobile hotspot or different network)<br>If you are using any
+domain(<b>"smtp.gmail.com", "smtp.office365.com", "smtp.mail.yahoo.com"</b>)<br>you don't need any vpn or different
+network
+that gonna run without, you can directly use the company <b>LAN</b>{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -26,20 +29,23 @@ LAN<br>or<br>Use a different network(Your mobile hotspot or different network){%
                             <label for="csv_file" class="form-label required-field">CSV File</label>
                             <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv"
                                 required>
-                            <div class="form-text">Must contain columns: 'name', 'emails', 'journal', 'article_title'
+                            <div class="form-text">Must contain columns: 'name', 'emails',... and You can add your
+                                column...
                             </div>
                         </div>
                         <div class="mb-3">
                             <label for="email_template_file" class="form-label required-field">Email Template</label>
                             <input type="file" class="form-control" id="email_template_file" name="email_template_file"
                                 accept=".html" required>
-                            <div class="form-text">HTML file with placeholders: {name}, {article_title}, {journal}</div>
+                            <div class="form-text">HTML file with placeholders: {name}, ..... and Your column that you
+                                have added</div>
                         </div>
                         <div class="mb-3">
                             <label for="subjectForEmail" class="form-label required-field">Email Subject</label>
                             <input type="text" class="form-control" id="subjectForEmail" name="subjectForEmail" required
                                 placeholder="e.g., Invitation for {name} to publish in {journal}">
-                            <div class="form-text">Supports placeholders: {name}, {article_title}, {journal}</div>
+                            <div class="form-text">Supports placeholders: {name}, ..... and Your column that you have
+                                added</div>
                         </div>
                     </div>
                     <!-- Account Settings Section -->
