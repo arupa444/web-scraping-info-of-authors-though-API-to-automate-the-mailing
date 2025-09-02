@@ -57,7 +57,7 @@ pip install -r requirements.txt
 
 ## Repository layout (important files)
 
-* `autoMailApp.py` — FastAPI application that provides the web UI and API endpoints.
+* `app.py` — FastAPI application that provides the web UI and API endpoints.
 * `automateEmailing.py` — CLI script that loads a CSV + HTML template and performs bulk sending with validation and logging.
 * `emailFilter.py` — Standalone utility to validate and filter emails (syntax, MX, optional SMTP verification).
 * `for_automate_authentic_email_google_yahoo_office.py` — Provider-specific helper / variant for sending via common providers (prompts for credentials / app passwords).
@@ -142,19 +142,19 @@ And if you are using this then you don't have to set a .env file.
 ### Running the Application
 
 ```bash
-uvicorn autoMailApp:app --reload
+uvicorn app:app --reload
 ```
 ```bash
 # if you think your default port is busy the use:
-uvicorn autoMailApp:app --reload --port 8002 # you can use any port inbetween 8000 to 8005 recommended
+uvicorn app:app --reload --port 8002 # you can use any port inbetween 8000 to 8005 recommended
 ```
 
 Then open: **[http://127.0.0.1:8000/](http://127.0.0.1:8000/)**
 
 
-### AutoMailApp – Email Tools Application for Pulsus
+### app (Auto Mail App) – Email Tools Application for Pulsus
 
-AutoMailApp is a **FastAPI-based application** designed to simplify email-related workflows for research communication and outreach. It provides a **web interface and APIs** to:
+app (Auto Mail App) is a **FastAPI-based application** designed to simplify email-related workflows for research communication and outreach. It provides a **web interface and APIs** to:
 
 * 📤 Send personalized emails in bulk from CSV + HTML templates.
 * 🔍 Scrape author contact details from **PubMed**.
@@ -297,7 +297,7 @@ The web UI and the scripts expect CSVs with at least the following columns (case
 
 ## Web UI endpoints (FastAPI)
 
-The FastAPI app exposes these key routes (see `autoMailApp.py`):
+The FastAPI app exposes these key routes (see `app.py`):
 
 * `GET /` — Landing / dashboard page.
 * `GET /email-filter` — Upload CSV & run validation.
