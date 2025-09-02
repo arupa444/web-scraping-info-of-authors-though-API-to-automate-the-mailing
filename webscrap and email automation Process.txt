@@ -5,7 +5,7 @@ any loaction:
 	->cd finalStore
 
 
-send mail, filter mail and to scrap mail:
+To send mail, filter mail and to scrap mail:
 
 	->cd web-scraping-info-of-authors-though-API-to-automate-the-mailing-main
 	->uvicorn app:app --reload
