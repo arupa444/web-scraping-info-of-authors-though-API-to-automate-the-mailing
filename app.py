@@ -134,7 +134,6 @@ def send_email(
     except Exception as e:
         return False, str(e)
 
-
 # EMAIL VALIDATION FUNCTIONS
 def is_valid_syntax(email: str) -> bool:
     """Check if email has valid syntax."""
@@ -742,63 +741,6 @@ def export_to_csv_scrape(data, filename):
 
 # Email Sender Router
 
-# @app.post("/email-sender/send", summary="Process CSV and send emails")
-# async def send_emails_endpoint(
-#     csv_file: UploadFile = File(...),
-#     email_template_file: UploadFile = File(...),
-#     subjectForEmail: str = Form(...),
-#     sender_email: EmailStr = Form(...),
-#     sender_name: str = Form(...),
-#     sender_password: str = Form(...),
-#     smtp_server_option: str = Form(...),
-#     custom_smtp_server: Optional[str] = Form(None),
-#     smtp_port_option: str = Form(...),
-#     custom_smtp_port: Optional[str] = Form(None),
-#     max_emails: int = Form(...),
-#     delay: int = Form(5),
-# ):
-#     if not csv_file.filename or not csv_file.filename.lower().endswith('.csv'):
-#         raise HTTPException(status_code=400, detail="Please upload a valid CSV file.")
-#     if not email_template_file.filename or not email_template_file.filename.lower().endswith('.html'):
-#         raise HTTPException(status_code=400, detail="Please upload a valid HTML email template file.")
-
-#     # Determine SMTP Server
-#     smtp_server = ""
-#     if smtp_server_option == "gmail":
-#         smtp_server = "smtp.gmail.com"
-#     elif smtp_server_option == "outlook":
-#         smtp_server = "smtp.office365.com"
-#     elif smtp_server_option == "yahoo":
-#         smtp_server = "smtp.mail.yahoo.com"
-#     elif smtp_server_option == "universal":
-#         try:
-#             domain = sender_email.split('@')[1]
-#             smtp_server = f"smtp.{domain}"
-#         except IndexError:
-#             raise HTTPException(status_code=400, detail="Invalid sender email format for 'Universal' SMTP server option.")
-#     elif smtp_server_option == "other":
-#         if not custom_smtp_server:
-#             raise HTTPException(status_code=400, detail="Custom SMTP server address is required when 'Other' is selected.")
-#         smtp_server = custom_smtp_server
-#     else:
-#         raise HTTPException(status_code=400, detail="Invalid SMTP server option.")
-
-#     # Determine SMTP Port
-#     smtp_port = 0
-#     if smtp_port_option == "587":
-#         smtp_port = 587
-#     elif smtp_port_option == "465":
-#         smtp_port = 465
-#     elif smtp_port_option == "25":
-#         smtp_port = 25
-#     elif smtp_port_option == "other":
-#         if custom_smtp_port is None:
-#             raise HTTPException(status_code=400, detail="Custom SMTP port is required when 'Other' is selected.")
-#         smtp_port = custom_smtp_port
-#     else:
-#         raise HTTPException(status_code=400, detail="Invalid SMTP port option.")
-
-
 @app.post("/email-sender/send", summary="Process CSV and send emails")
 async def send_emails_endpoint(
     csv_file: UploadFile = File(...),
@@ -830,30 +772,7 @@ async def send_emails_endpoint(
     elif smtp_server_option == "universal":
         try:
             domain = sender_email.split('@')[1]
-            try:
-                # Attempt to resolve MX records first for robustness
-                mx_records = dns.resolver.resolve(domain, 'MX')
-                # Take the primary MX record (lowest preference) and remove trailing dot
-                smtp_server = str(mx_records[0].exchange).rstrip('.')
-                print(f"Determined SMTP server for {domain} via MX record: {smtp_server}")
-            except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
-                print(f"No MX record found for {domain}, attempting common SMTP patterns.")
-                # Fallback to common patterns if no MX record is found
-                if "gmail.com" in domain:
-                    smtp_server = "smtp.gmail.com"
-                elif any(d in domain for d in ["outlook.com", "hotmail.com", "live.com"]):
-                    smtp_server = "smtp.office365.com"
-                elif "yahoo.com" in domain:
-                    smtp_server = "smtp.mail.yahoo.com"
-                else:
-                    # Generic fallback; for many smaller hosts, smtp.domain or mail.domain works
-                    # If this still fails, the user will need to use 'Other'
-                    smtp_server = f"smtp.{domain}"
-                print(f"Guessed SMTP server for {domain}: {smtp_server}")
-
-            if not smtp_server:
-                 raise HTTPException(status_code=400, detail=f"Could not automatically determine SMTP server for '{domain}'. Please use 'Other' option to specify it manually.")
-
+            smtp_server = f"smtp.{domain}"
         except IndexError:
             raise HTTPException(status_code=400, detail="Invalid sender email format for 'Universal' SMTP server option.")
     elif smtp_server_option == "other":
@@ -872,12 +791,9 @@ async def send_emails_endpoint(
     elif smtp_port_option == "25":
         smtp_port = 25
     elif smtp_port_option == "other":
-        if not custom_smtp_port: # Use 'not custom_smtp_port' to catch empty strings
+        if custom_smtp_port is None:
             raise HTTPException(status_code=400, detail="Custom SMTP port is required when 'Other' is selected.")
-        try:
-            smtp_port = int(custom_smtp_port) # Convert to int
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Custom SMTP port must be a valid integer.")
+        smtp_port = custom_smtp_port
     else:
         raise HTTPException(status_code=400, detail="Invalid SMTP port option.")
 
