@@ -89,8 +89,53 @@ def log_memory_usage():
 # Email Sending and Validation Functions
 # ====================================================================
 
+# def send_email(
+#     row: Dict,  
+#     subjectForEmail: str,
+#     sender_email: str,
+#     sender_name: str,
+#     sender_password: str,
+#     recipient_name: str,
+#     recipient_email: str,
+#     smtp_server: str,
+#     smtp_port: int,
+#     template_content: str
+# ) -> tuple[bool, str]:
+#     """Send a personalized email to an author using HTML template."""
+#     html = template_content.format(**row)
+#     formatted_subject = subjectForEmail.format(**row)
+
+#     msg = MIMEMultipart('alternative')
+#     msg['Subject'] = formatted_subject
+#     msg['From'] = formataddr((sender_name, sender_email))
+#     msg['To'] = formataddr((recipient_name, recipient_email))
+#     msg.attach(MIMEText(html, 'html'))
+    
+
+#     try:
+#         if smtp_server in ["smtp.gmail.com", "smtp.office365.com", "smtp.mail.yahoo.com"]:
+#             context = ssl.create_default_context()
+#         else:
+#             context = ssl.create_default_context()
+#             context.check_hostname = False
+#             context.verify_mode = ssl.CERT_NONE
+        
+#         with smtplib.SMTP(smtp_server, smtp_port) as server:
+#             server.starttls(context=context)
+#             server.login(sender_email, sender_password)
+#             server.sendmail(sender_email, recipient_email, msg.as_string())
+#         return True, "Email sent successfully"
+#     except smtplib.SMTPAuthenticationError:
+#         return False, "Authentication failed. Check your email and password."
+#     except smtplib.SMTPConnectError as e:
+#         return False, f"Could not connect to SMTP server '{smtp_server}:{smtp_port}': {e}"
+#     except smtplib.SMTPRecipientsRefused:
+#         return False, "Recipient email address refused by the SMTP server."
+#     except Exception as e:
+#         return False, str(e)
+
 def send_email(
-    row: Dict,  
+    row: Dict,
     subjectForEmail: str,
     sender_email: str,
     sender_name: str,
@@ -110,29 +155,41 @@ def send_email(
     msg['From'] = formataddr((sender_name, sender_email))
     msg['To'] = formataddr((recipient_name, recipient_email))
     msg.attach(MIMEText(html, 'html'))
-    
 
     try:
-        if smtp_server in ["smtp.gmail.com", "smtp.office365.com", "smtp.mail.yahoo.com"]:
-            context = ssl.create_default_context()
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+        if smtp_port == 465:
+            # Use SMTPS for implicit SSL on port 465
+            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context) as server:
+                server.login(sender_email, sender_password)
+                server.sendmail(sender_email, recipient_email, msg.as_string())
         else:
-            context = ssl.create_default_context()
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-        
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls(context=context)
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, recipient_email, msg.as_string())
+            # Use SMTP for STARTTLS on other ports (like 587, 25)
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.starttls(context=context)
+                server.login(sender_email, sender_password)
+                server.sendmail(sender_email, recipient_email, msg.as_string())
+
         return True, "Email sent successfully"
     except smtplib.SMTPAuthenticationError:
-        return False, "Authentication failed. Check your email and password."
+        return False, "Authentication failed. Check your email and password. For services like Gmail or Outlook with 2FA, you might need to use an App-Specific Password instead of your regular password."
     except smtplib.SMTPConnectError as e:
-        return False, f"Could not connect to SMTP server '{smtp_server}:{smtp_port}': {e}"
+        return False, f"Could not connect to SMTP server '{smtp_server}:{smtp_port}'. Please check the server address and port, and ensure they are accessible from where this application is hosted. Error: {e}"
     except smtplib.SMTPRecipientsRefused:
-        return False, "Recipient email address refused by the SMTP server."
+        return False, "Recipient email address refused by the SMTP server. This could be due to an invalid recipient email, or the sender's email (yours) being blocked or having misconfigured SPF/DKIM/DMARC records."
+    except smtplib.SMTPServerDisconnected as e:
+        return False, f"SMTP server disconnected unexpectedly. This can happen with incorrect server/port settings, or if the server closes the connection due to security policy or activity. Error: {e}"
+    except ssl.SSLError as e:
+        return False, f"SSL/TLS error during connection. This might indicate issues with the server's security certificate, an unsupported TLS version, or a handshake failure. Error: {e}"
+    except ConnectionRefusedError:
+        return False, f"Connection refused by the SMTP server at '{smtp_server}:{smtp_port}'. This often means the server is not running, or a firewall is blocking the connection from your end."
+    except socket.gaierror as e: # Catch "getaddress" (hostname resolution) errors
+        return False, f"Hostname resolution error for SMTP server '{smtp_server}'. The server address might be incorrect or there could be a DNS issue. Error: {e}"
     except Exception as e:
-        return False, str(e)
+        return False, f"An unexpected error occurred during email sending: {e}. Please review your SMTP settings or try again."
 
 # EMAIL VALIDATION FUNCTIONS
 def is_valid_syntax(email: str) -> bool:
