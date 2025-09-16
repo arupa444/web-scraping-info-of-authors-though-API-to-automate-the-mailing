@@ -89,10 +89,16 @@ def log_memory_usage():
 # ====================================================================
 # Email Sending and Validation Functions
 # ====================================================================
+def render_template(rand_template_content: str, row: dict) -> str:
+    def replacer(match):
+        key = match.group(1)
+        return str(row.get(key, "{" + key + "}"))
+    return re.sub(r"{(\w+)}", replacer, rand_template_content)
+
 
 def send_email(
     row: Dict,  
-    subjectForEmail: str,
+    rand_subjectForEmail: str,
     sender_email: str,
     sender_name: str,
     sender_password: str,
@@ -103,8 +109,8 @@ def send_email(
     rand_template_content: str
 ) -> tuple[bool, str]:
     """Send a personalized email to an author using HTML template."""
-    html = rand_template_content.format(**row)
-    formatted_subject = subjectForEmail.format(**row)
+    html = render_template(rand_template_content, row)
+    formatted_subject = rand_subjectForEmail.format(**row)
 
     msg = MIMEMultipart('alternative')
     msg['Subject'] = formatted_subject
@@ -178,7 +184,7 @@ def validate_email(email: str) -> str:
     return "Deliverable"
 
 async def process_csv_and_send_emails(
-    subjectForEmail: str,
+    subjectForEmail: List,
     csv_file_path: str,
     sender_email: str,
     sender_name: str,
@@ -256,10 +262,13 @@ async def process_csv_and_send_emails(
 
                     print(f"    ✓ Valid - Attempting to send email to {email} via {smtp_server}:{smtp_port}...")
                     filename, rand_template_content = random.choice(template_content)
-                    print(f"This mail sent using {filename}")
+                    print(f"{True} This mail is using {filename} template")
+                    
+                    rand_subjectForEmail = random.choice(subjectForEmail)
+                    print(f"{True} This mail using {rand_subjectForEmail} title")
 
                     success, message = send_email(
-                        row, subjectForEmail, sender_email, sender_name, sender_password, name, email, smtp_server, smtp_port, rand_template_content
+                        row, rand_subjectForEmail, sender_email, sender_name, sender_password, name, email, smtp_server, smtp_port, rand_template_content
                     )
 
                     result = {
@@ -748,7 +757,7 @@ def export_to_csv_scrape(data, filename):
 async def send_emails_endpoint(
     csv_file: UploadFile = File(...),
     email_template_files: List[UploadFile] = File(...),
-    subjectForEmail: str = Form(...),
+    subjectForEmail:  List[str] = Form(...),
     sender_email: EmailStr = Form(...),
     sender_name: str = Form(...),
     sender_password: str = Form(...),
