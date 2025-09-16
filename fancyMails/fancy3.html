@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Environmental Research Quarterly</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Georgia', serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            padding: 15px;
+        }
+        
+        .email-wrapper {
+            max-width: 680px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 30px;
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        
+        .decorative-header {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 50%, #16a085 100%);
+            padding: 0;
+            position: relative;
+            height: 200px;
+            overflow: hidden;
+        }
+        
+        .decorative-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+            animation: patternMove 20s linear infinite;
+        }
+        
+        @keyframes patternMove {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            100% { transform: translate(60px, 60px) rotate(360deg); }
+        }
+        
+        .header-content {
+            position: relative;
+            z-index: 2;
+            padding: 50px 40px;
+            text-align: center;
+            color: white;
+        }
+        
+        .journal-name {
+            font-size: 2.8em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+            line-height: 1.1;
+        }
+        
+        .journal-tagline {
+            font-size: 1.2em;
+            font-style: italic;
+            opacity: 0.95;
+            font-weight: 300;
+        }
+        
+        .main-content {
+            padding: 50px 45px;
+            background: white;
+            position: relative;
+        }
+        
+        .nature-border {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 8px;
+            background: linear-gradient(90deg, #27ae60, #2ecc71, #1abc9c, #3498db, #9b59b6, #e74c3c, #f39c12, #27ae60);
+            background-size: 200% 100%;
+            animation: rainbowFlow 8s linear infinite;
+        }
+        
+        @keyframes rainbowFlow {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+        
+        .greeting-section {
+            background: #f8f9fa;
+            padding: 35px;
+            border-radius: 20px;
+            margin-bottom: 35px;
+            border-left: 6px solid #27ae60;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .greeting-section::before {
+            content: '🌍';
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 3em;
+            opacity: 0.1;
+        }
+        
+        .greeting-text {
+            font-size: 1.5em;
+            color: #2c3e50;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .impact-showcase {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            border-radius: 25px;
+            color: white;
+            margin: 35px 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .impact-showcase::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 20px,
+                rgba(255,255,255,0.03) 20px,
+                rgba(255,255,255,0.03) 40px
+            );
+            animation: diagonalMove 15s linear infinite;
+        }
+        
+        @keyframes diagonalMove {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .impact-title {
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 30px;
+            margin: 35px 0;
+        }
+        
+        .stat-box {
+            background: white;
+            padding: 30px 20px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 3px solid transparent;
+            background-clip: padding-box;
+        }
+        
+        .stat-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #27ae60, #2ecc71, #1abc9c);
+            border-radius: 20px;
+            z-index: -1;
+            transform: scale(0);
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-box:hover::before {
+            transform: scale(1.05);
+        }
+        
+        .stat-box:hover {
+            transform: translateY(-10px);
+            color: white;
+            border-color: transparent;
+        }
+        
+        .stat-number {
+            font-size: 3em;
+            font-weight: bold;
+            color: #27ae60;
+            display: block;
+            margin-bottom: 10px;
+            transition: color 0.3s ease;
+        }
+        
+        .stat-box:hover .stat-number {
+            color: white;
+        }
+        
+        .research-topics {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            padding: 40px;
+            border-radius: 25px;
+            margin: 35px 0;
+            color: white;
+            position: relative;
+        }
+        
+        .topics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 25px;
+        }
+        
+        .topic-card {
+            background: rgba(255,255,255,0.15);
+            padding: 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .topic-card:hover {
+            background: rgba(255,255,255,0.25);
+            transform: translateY(-5px);
+        }
+        
+        .topic-icon {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .deadline-alert {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #fecfef 100%);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            margin: 35px 0;
+            border: 3px solid #ff6b6b;
+            animation: gentlePulse 3s ease-in-out infinite;
+        }
+        
+        @keyframes gentlePulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.4); }
+            50% { transform: scale(1.02); box-shadow: 0 0 0 20px rgba(255, 107, 107, 0); }
+        }
+        
+        .submission-section {
+            text-align: center;
+            margin: 45px 0;
+        }
+        
+        .submit-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 50px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin: 15px;
+            box-shadow: 0 10px 30px rgba(118, 75, 162, 0.4);
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .submit-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        
+        .submit-button:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+        
+        .submit-button:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(118, 75, 162, 0.6);
+        }
+        
+        .email-button {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+            box-shadow: 0 10px 30px rgba(46, 204, 113, 0.4);
+        }
+        
+        .email-button:hover {
+            box-shadow: 0 20px 40px rgba(46, 204, 113, 0.6);
+        }
+        
+        .footer-area {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 50px 45px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .footer-area::before {
+            content: '';
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            width: 80px;
+            height: 40px;
+            background: #2c3e50;
+            border-radius: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .editor-profile {
+            margin-bottom: 35px;
+        }
+        
+        .editor-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .editor-title {
+            font-size: 1.1em;
+            opacity: 0.9;
+            margin-bottom: 15px;
+        }
+        
+        .editor-credentials {
+            font-size: 0.95em;
+            opacity: 0.8;
+            line-height: 1.6;
+        }
+        
+        .contact-grid {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        
+        .contact-item {
+            width: 60px;
+            height: 60px;
+            border-radius: 15px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 20px rgba(52, 152, 219, 0.3);
+        }
+        
+        .contact-item:hover {
+            transform: translateY(-8px) rotate(5deg);
+            box-shadow: 0 15px 35px rgba(52, 152, 219, 0.5);
+        }
+        
+        .testimonial-quote {
+            background: rgba(255,255,255,0.1);
+            padding: 25px;
+            border-radius: 15px;
+            font-style: italic;
+            margin: 30px 0;
+            border-left: 4px solid #3498db;
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="decorative-header">
+            <div class="header-content">
+                <h1 class="journal-name">Global Environmental Research Quarterly</h1>
+                <p class="journal-tagline">ISSN: 2345-6789 | Impact Factor: 5.3</p>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="nature-border"></div>
+            
+            <div class="greeting-section">
+                <div class="greeting-text">Dear Dr. [Author Name],</div>
+                <p style="font-size: 1.1em; line-height: 1.7; color: #34495e;">
+                    As our planet faces unprecedented environmental challenges, your research has never been more crucial. We invite you to share your groundbreaking work with the global scientific community through our prestigious journal.
+                </p>
+            </div>
+            
+            <div class="impact-showcase">
+                <h2 class="impact-title">🌱 Leading Environmental Science Forward</h2>
+                <p style="font-size: 1.2em; line-height: 1.6; position: relative; z-index: 2;">
+                    Join the world's most influential environmental researchers in addressing climate change, biodiversity loss, and sustainable development through cutting-edge scientific inquiry.
+                </p>
+            </div>
+            
+            <div class="stats-container">
+                <div class="stat-box">
+                    <span class="stat-number">5.3</span>
+                    <span style="font-weight: 600;">Impact Factor</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-number">92%</span>
+                    <span style="font-weight: 600;">Author Satisfaction</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-number">28</span>
+                    <span style="font-weight: 600;">Days to Review</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-number">180+</span>
+                    <span style="font-weight: 600;">Countries Reached</span>
+                </div>
+            </div>
+            
+            <div class="research-topics">
+                <h3 style="font-size: 1.8em; margin-bottom: 15px; text-align: center;">🔬 Research Domains We Champion</h3>
+                <div class="topics-grid">
+                    <div class="topic-card">
+                        <span class="topic-icon">🌊</span>
+                        <h4>Climate & Ocean Science</h4>
+                        <p style="margin-top: 10px; opacity: 0.9;">Marine ecosystems, climate modeling, ocean acidification</p>
+                    </div>
+                    <div class="topic-card">
+                        <span class="topic-icon">🦋</span>
+                        <h4>Biodiversity Conservation</h4>
+                        <p style="margin-top: 10px; opacity: 0.9;">Species protection, habitat restoration, ecosystem services</p>
+                    </div>
+                    <div class="topic-card">
+                        <span class="topic-icon">♻️</span>
+                        <h4>Sustainable Technologies</h4>
+                        <p style="margin-top: 10px; opacity: 0.9;">Green energy, waste management, circular economy</p>
+                    </div>
+                    <div class="topic-card">
+                        <span class="topic-icon">🏭</span>
+                        <h4>Environmental Policy</h4>
+                        <p style="margin-top: 10px; opacity: 0.9;">Regulatory frameworks, impact assessment, governance</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background: #e8f8f5; padding: 35px; border-radius: 20px; margin: 35px 0;">
+                <h3 style="color: #27ae60; margin-bottom: 25px; text-align: center; font-size: 1.5em;">🎯 Why Researchers Choose Us</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 2.5em; margin-bottom: 10px;">⚡</div>
+                        <strong>Rapid Publication</strong>
+                        <p style="margin-top: 8px; color: #555;">Fast-track review for urgent environmental findings</p>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2.5em; margin-bottom: 10px;">🌍</div>
+                        <strong>Global Impact</strong>
+                        <p style="margin-top: 8px; color: #555;">Reach policymakers and researchers worldwide</p>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2.5em; margin-bottom: 10px;">🏆</div>
+                        <strong>Editorial Excellence</strong>
+                        <p style="margin-top: 8px; color: #555;">World-class editorial board and peer review</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="deadline-alert">
+                <h3 style="color: #e74c3c; margin-bottom: 15px; font-size: 1.6em;">⏰ Special Issue Deadline</h3>
+                <p style="font-size: 1.3em; font-weight: bold; color: #2c3e50;">Submit by September 30, 2025</p>
+                <p style="margin-top: 10px; color: #7f8c8d;">"Climate Solutions for the Next Decade" - Priority review guaranteed!</p>
+            </div>
+            
+            <div class="submission-section">
+                <h3 style="margin-bottom: 30px; color: #2c3e50; font-size: 1.6em;">Ready to Make Your Mark?</h3>
+                <a href="https://www.scholarscentral.org/submissions/environmental-research" class="submit-button">Submit Manuscript</a>
+                <a href="mailto:environment@globalresearch.org" class="submit-button email-button">Email Editor</a>
+            </div>
+            
+            <div class="testimonial-quote">
+                <p>"Publishing with GERQ was a game-changer for my career. The editorial support was exceptional, and my paper reached audiences I never imagined." - <strong>Dr. Maria Santos, Climate Researcher</strong></p>
+            </div>
+        </div>
+        
+        <div class="footer-area">
+            <div class="editor-profile">
+                <h3 class="editor-name">Professor James Mitchell</h3>
+                <p class="editor-title">Editor-in-Chief</p>
+                <div class="editor-credentials">
+                    Oxford University | 20+ Years Experience<br>
+                    Specialist in Environmental Systems & Policy<br>
+                    Former UN Climate Panel Contributor
+                </div>
+            </div>
+            
+            <div class="contact-grid">
+                <a href="#" class="contact-item">📧</a>
+                <a href="#" class="contact-item">🌐</a>
+                <a href="#" class="contact-item">📱</a>
+                <a href="#" class="contact-item">📊</a>
+                <a href="#" class="contact-item">🐦</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
