@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import EmailStr
 from typing import Annotated, Literal, Optional, List, Dict
+import random
 
 from pydantic import BaseModel, Field, field_validator, computed_field, AnyUrl, EmailStr
 import requests
@@ -99,10 +100,10 @@ def send_email(
     recipient_email: str,
     smtp_server: str,
     smtp_port: int,
-    template_content: str
+    rand_template_content: str
 ) -> tuple[bool, str]:
     """Send a personalized email to an author using HTML template."""
-    html = template_content.format(**row)
+    html = rand_template_content.format(**row)
     formatted_subject = subjectForEmail.format(**row)
 
     msg = MIMEMultipart('alternative')
@@ -184,7 +185,7 @@ async def process_csv_and_send_emails(
     sender_password: str,
     smtp_server: str,
     smtp_port: int,
-    template_content: str,
+    template_content: List,
     max_emails: int,
     delay: int = 5
 ) -> tuple[list[dict], dict, Optional[str]]:
@@ -254,9 +255,11 @@ async def process_csv_and_send_emails(
                         continue
 
                     print(f"    ✓ Valid - Attempting to send email to {email} via {smtp_server}:{smtp_port}...")
+                    filename, rand_template_content = random.choice(template_content)
+                    print(f"This mail sent using {filename}")
 
                     success, message = send_email(
-                        row, subjectForEmail, sender_email, sender_name, sender_password, name, email, smtp_server, smtp_port, template_content
+                        row, subjectForEmail, sender_email, sender_name, sender_password, name, email, smtp_server, smtp_port, rand_template_content
                     )
 
                     result = {
@@ -744,7 +747,7 @@ def export_to_csv_scrape(data, filename):
 @app.post("/email-sender/send", summary="Process CSV and send emails")
 async def send_emails_endpoint(
     csv_file: UploadFile = File(...),
-    email_template_file: UploadFile = File(...),
+    email_template_files: List[UploadFile] = File(...),
     subjectForEmail: str = Form(...),
     sender_email: EmailStr = Form(...),
     sender_name: str = Form(...),
@@ -758,8 +761,10 @@ async def send_emails_endpoint(
 ):
     if not csv_file.filename or not csv_file.filename.lower().endswith('.csv'):
         raise HTTPException(status_code=400, detail="Please upload a valid CSV file.")
-    if not email_template_file.filename or not email_template_file.filename.lower().endswith('.html'):
-        raise HTTPException(status_code=400, detail="Please upload a valid HTML email template file.")
+    templates = []
+
+    if not email_template_files:
+        raise HTTPException(status_code=400, detail="No template files were uploaded.")
 
     # Determine SMTP Server
     smtp_server = ""
@@ -798,11 +803,47 @@ async def send_emails_endpoint(
         raise HTTPException(status_code=400, detail="Invalid SMTP port option.")
 
     temp_csv_file_path = None
-    email_template_content = None
 
     try:
         # Read uploaded email template content
-        email_template_content = (await email_template_file.read()).decode('utf-8')
+        # email_template_content = (await email_template_file.read()).decode('utf-8')
+        for file in email_template_files:
+            try:
+                if not file.filename.lower().endswith(".html"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid file type: {file.filename}. Only .html files are allowed."
+                    )
+
+                content_bytes = await file.read()
+                try:
+                    content_str = content_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Failed to decode {file.filename}. Ensure it's saved as UTF-8."
+                    )
+
+                if not content_str.strip():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Template file {file.filename} is empty."
+                    )
+
+                templates.append((file.filename, content_str))
+
+            except HTTPException:
+                # Re-raise FastAPI specific errors
+                raise
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Unexpected error while processing {file.filename}: {str(e)}"
+                )
+
+        if not templates:
+            raise HTTPException(status_code=400, detail="No valid HTML templates found in uploaded folder.")
+
 
         # Save the uploaded CSV to a temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
@@ -820,7 +861,7 @@ async def send_emails_endpoint(
             sender_password=sender_password,
             smtp_server=smtp_server,
             smtp_port=smtp_port,
-            template_content=email_template_content,
+            template_content=templates,
             max_emails=max_emails,
             delay=delay
         )
