@@ -879,11 +879,73 @@ async def send_emails_endpoint(
             raise HTTPException(status_code=500, detail=processing_error)
 
         summary = display_summary(results, validation_stats)
+        # In the send_emails_endpoint function, after processing emails and getting results...
 
-        return JSONResponse(content={
-            "status": "Email sending process completed.",
-            "summary": summary,
-        })
+        # Create feedback CSV file
+        feedback_csv_path = None
+        try:
+            feedback_csv_path = f"email_feedback_{int(time.time())}.csv"
+            with open(feedback_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = ['name', 'email', 'success', 'message']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                
+                for result in results:
+                    writer.writerow({
+                        'name': result['name'],
+                        'email': result['email'],
+                        'success': result['success'],
+                        'message': result['message']
+                    })
+        except Exception as e:
+            print(f"Error creating feedback CSV: {e}")
+            feedback_csv_path = None
+
+        # After processing emails and getting results
+        if temp_csv_file_path and os.path.exists(temp_csv_file_path):
+            # Use the original file name from the uploaded file
+            original_filename = os.path.basename(csv_file.filename)
+            filename_without_ext, ext = os.path.splitext(original_filename)
+            new_csv_filename = f"{filename_without_ext}_updateAfterDel{ext}"
+            
+            # Save the new file in the same directory as the original file
+            new_csv_path = os.path.join(os.path.dirname(csv_file.filename), new_csv_filename)
+            
+            # Read the original CSV and skip the first max_emails rows
+            with open(temp_csv_file_path, 'r', newline='', encoding='utf-8') as infile:
+                reader = csv.DictReader(infile)
+                fieldnames = reader.fieldnames
+                
+                # Write the updated content to the new file
+                with open(new_csv_path, 'w', newline='', encoding='utf-8') as outfile:
+                    writer = csv.DictWriter(outfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    
+                    # Skip the first max_emails rows
+                    for i, row in enumerate(reader):
+                        if i >= max_emails:
+                            writer.writerow(row)
+            
+            print(f"New updated CSV created: {new_csv_path}")
+
+
+
+        # At the end of the send_emails_endpoint function
+        if feedback_csv_path and os.path.exists(feedback_csv_path):
+            # Return both JSON summary and CSV file
+            return {
+                "response": FileResponse(
+                    path=feedback_csv_path,
+                    filename=os.path.basename(feedback_csv_path),
+                    media_type='text/csv'
+                ),
+                "summary": summary
+            }
+        else:
+            return JSONResponse(content={
+                "status": "Email sending process completed.",
+                "summary": summary
+            })
 
     except HTTPException as e:
         raise e
