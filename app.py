@@ -860,7 +860,12 @@ async def send_emails_endpoint(
             temp_csv_file_path = tmp.name
 
         print(f"Uploaded CSV saved temporarily to: {temp_csv_file_path}")
+        tempStoreSubject = []
 
+        for i in subjectForEmail:
+            if i != "":
+                tempStoreSubject.append(i)
+        subjectForEmail = tempStoreSubject[:]
         # Process emails
         results, validation_stats, processing_error = await process_csv_and_send_emails(
             subjectForEmail=subjectForEmail,
