@@ -34,11 +34,13 @@ that gonna run without, you can directly use the company <b>LAN</b>{% endblock %
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label for="email_template_file" class="form-label required-field">Email Template</label>
-                            <input type="file" class="form-control" id="email_template_file" name="email_template_file"
-                                accept=".html" required>
-                            <div class="form-text">HTML file with placeholders: {name}, ..... and Your column that you
-                                have added</div>
+                            <label for="email_template_files" class="form-label required-field">Email Templates
+                                Folder</label>
+                            <input type="file" class="form-control" id="email_template_files"
+                                name="email_template_files" webkitdirectory directory accept=".html" required>
+                            <div class="form-text">
+                                Upload a folder of HTML templates (with placeholders: {name}, etc.)
+                            </div>
                         </div>
                         <div class="mb-3">
                             <label for="subjectForEmail" class="form-label required-field">Email Subject</label>
