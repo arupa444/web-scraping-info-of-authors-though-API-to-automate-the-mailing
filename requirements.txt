@@ -8,3 +8,5 @@ pydantic
 pydantic[email]
 python-dotenv
 psutil
+pandas
+openpyxl
