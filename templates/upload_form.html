@@ -26,11 +26,11 @@ that gonna run without, you can directly use the company <b>LAN</b>{% endblock %
                     <div class="mb-4">
                         <h5 class="mb-3"><i class="bi bi-file-earmark-text"></i> Files & Templates</h5>
                         <div class="mb-3">
-                            <label for="csv_file" class="form-label required-field">CSV File</label>
-                            <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv"
-                                required>
+                            <label for="csv_file" class="form-label required-field">Data File</label>
+                            <input type="file" class="form-control" id="csv_file" name="csv_file"
+                                accept=".csv,.xlsx,.xls,.xlsn,.xlsb,.xltm,.xltx" required>
                             <div class="form-text">Must contain columns: 'name', 'emails',... and You can add your
-                                column...
+                                column... and acceptable extensions: .csv,.xlsx,.xls,.xlsn,.xlsb,.xltm,.xltx
                             </div>
                         </div>
                         <div class="mb-3">
@@ -64,6 +64,10 @@ that gonna run without, you can directly use the company <b>LAN</b>{% endblock %
                             <!-- Subject 5 -->
                             <input type="text" class="form-control mb-2" id="subjectForEmail5" name="subjectForEmail"
                                 placeholder="e.g., {name}, contribute your research to {journal}">
+
+                            <!-- Subject 6 -->
+                            <input type="text" class="form-control mb-2" id="subjectForEmail6" name="subjectForEmail"
+                                placeholder="e.g., Invitation to collaborate with {journal}, {name}">
 
                             <div class="form-text">
                                 Supports placeholders: {name}, etc., and any custom CSV column you added.
