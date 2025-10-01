@@ -184,7 +184,7 @@ def validate_email(email: str) -> str:
 
     return "Deliverable"
 
-def process_csv_and_send_emails(
+async def process_csv_and_send_emails(
     subjectForEmail: List,
     csv_file_path: str, 
     sender_email: str,
@@ -998,7 +998,7 @@ async def send_emails_endpoint(
         subjectForEmail = storeTempSubject[:]
         storeTempSubject = None
         # Process emails
-        results, validation_stats, processing_error, remaining_df = process_csv_and_send_emails(
+        results, validation_stats, processing_error, remaining_df = await process_csv_and_send_emails(
             subjectForEmail=subjectForEmail,
             csv_file_path=temp_data_file_path, 
             sender_email=sender_email,
