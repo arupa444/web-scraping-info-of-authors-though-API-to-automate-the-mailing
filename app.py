@@ -136,9 +136,9 @@ def send_email(
     except smtplib.SMTPAuthenticationError:
         return False, "Authentication failed. Check your email and password."
     except smtplib.SMTPConnectError as e:
-        return False, f"Could not connect to SMTP server '{smtp_server}:{smtp_port}': {e}"
+        return False, f"Could not connect to SMTP server '{smtp_server}:{smtp_port}': {e}. Try asking your email provider for the correct SMTP settings."
     except smtplib.SMTPRecipientsRefused:
-        return False, "Recipient email address refused by the SMTP server."
+        return True, "Recipient email address refused by the SMTP server. YOUR EMAIL MAY HAVE BEEN BLOCKED."
     except Exception as e:
         return False, str(e)
 
@@ -303,7 +303,7 @@ async def process_csv_and_send_emails(
                 success, message = send_email(
                     row, rand_subjectForEmail, sender_email, sender_name, sender_password, name, email, smtp_server, smtp_port, rand_template_content
                 )
-
+                
                 result = {
                     'name': name,
                     'email': email,
@@ -311,11 +311,11 @@ async def process_csv_and_send_emails(
                     'message': message
                 }
                 results.append(result)
-
                 if success:
-                    print(f"    ✓ Email sent successfully to {email}")
+                    print(f"    ✓ Email sent successfully to {email}: {message}")
                 else:
                     print(f"    ✗ Failed to send to {email}: {message}")
+                    break # Stop further attempts for this row if sending fails
             
             # If any email from this row was processed (attempted to send after validation)
             # then mark this row as processed to remove it from the remaining DataFrame.
