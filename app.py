@@ -184,7 +184,7 @@ def validate_email(email: str) -> str:
 
     return "Deliverable"
 
-async def process_csv_and_send_emails(
+def process_csv_and_send_emails(
     subjectForEmail: List,
     csv_file_path: str, 
     sender_email: str,
@@ -317,10 +317,12 @@ async def process_csv_and_send_emails(
                     print(f"    ✗ Failed to send to {email}: {message}")
                     break # Stop further attempts for this row if sending fails
             
+            if not success:
+                break
             # If any email from this row was processed (attempted to send after validation)
             # then mark this row as processed to remove it from the remaining DataFrame.
             if row_had_any_email_attempted:
-                 processed_indices.append(df.index[i]) # Get the original DataFrame index
+                processed_indices.append(df.index[i]) # Get the original DataFrame index
 
             if i < max_emails_actual - 1 and delay > 0:
                 print(f"\nWaiting {delay} seconds before processing next row...")
@@ -988,9 +990,15 @@ async def send_emails_endpoint(
             temp_data_file_path = tmp.name
 
         print(f"Uploaded data file saved temporarily to: {temp_data_file_path}")
-
+        storeTempSubject = []
+        for i in subjectForEmail:
+            if i != '':
+                storeTempSubject.append(i)
+                
+        subjectForEmail = storeTempSubject[:]
+        storeTempSubject = None
         # Process emails
-        results, validation_stats, processing_error, remaining_df = await process_csv_and_send_emails(
+        results, validation_stats, processing_error, remaining_df = process_csv_and_send_emails(
             subjectForEmail=subjectForEmail,
             csv_file_path=temp_data_file_path, 
             sender_email=sender_email,
