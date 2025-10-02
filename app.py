@@ -32,9 +32,6 @@ load_dotenv()
 
 app = FastAPI(title="Email Tools Application for Pulsus")
 
-
-
-
 class SendEndpoint(BaseModel):
     csv_file: Annotated[UploadFile, File(..., title="CSV File", description="Upload the CSV File...")]
     email_template_file: Annotated[UploadFile, File(..., title="Email Template", description="Upload the Email Template...")]
@@ -71,7 +68,6 @@ def get_email_filter_form(request: Request):
 @app.get("/email-scraper", response_class=HTMLResponse, summary="Serve the email scraper HTML form")
 def get_email_scraper_form(request: Request):
     return templates.TemplateResponse("email_scraper.html", {"request": request, "active_page": "scraper"})
-
 
 
 # Configure Jinja2Templates to find templates in the "templates" directory
@@ -405,7 +401,6 @@ def check_smtp_filter(email, sender_email):
     try:
         mx_records = dns.resolver.resolve(domain, 'MX', lifetime=5)
         mx_record = str(mx_records[0].exchange)
-
         server = smtplib.SMTP(timeout=10)
         server.set_debuglevel(0)
         server.connect(mx_record)
