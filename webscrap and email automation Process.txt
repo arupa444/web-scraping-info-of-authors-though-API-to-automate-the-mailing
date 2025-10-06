@@ -1,13 +1,11 @@
-any loaction:
+any location:
 	->press windows + r
 	->type "CMD"
 	->cd Desktop
-	->cd finalStore
+	->cd pdfGen(version)
 
 
-To send mail, filter mail and to scrap mail:
-
-	->cd web-scraping-info-of-authors-though-API-to-automate-the-mailing-main
+To send mail, filter mail or to scrap mail:
 	->uvicorn app:app --reload
 	#if that won't work then try changing the port
 	->uvicorn app:app --reload --port 8001
