@@ -1,0 +1,83 @@
+"""Campaigns: compose, send (background), analytics."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DbSession
+
+from ..db import get_db
+from ..models import Campaign, CampaignVariant
+from ..schemas.campaign import CampaignIn, CampaignOut, VariantOut
+from ..security.deps import AuthContext, auth_context
+from ..services import sender  # noqa: F401 — registers the send_campaign handler
+from ..services.analytics import campaign_metrics
+from ..services.queue import enqueue
+
+router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
+
+
+def _out(db: DbSession, c: Campaign) -> CampaignOut:
+    variants = db.scalars(select(CampaignVariant).where(CampaignVariant.campaign_id == c.id)).all()
+    return CampaignOut(
+        id=c.id, name=c.name, status=c.status, from_name=c.from_name, from_email=c.from_email,
+        sending_domain_id=c.sending_domain_id, list_id=c.list_id, segment_id=c.segment_id,
+        variants=[VariantOut(id=v.id, subject=v.subject, html=v.html, text=v.text, weight=v.weight) for v in variants],
+    )
+
+
+def _owned(db: DbSession, ctx: AuthContext, campaign_id: int) -> Campaign:
+    c = db.scalar(select(Campaign).where(Campaign.id == campaign_id, Campaign.workspace_id == ctx.workspace.id))
+    if c is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return c
+
+
+@router.post("", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)
+def create_campaign(body: CampaignIn, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    c = Campaign(
+        workspace_id=ctx.workspace.id, name=body.name, from_name=body.from_name,
+        from_email=str(body.from_email or ""), sending_domain_id=body.sending_domain_id,
+        list_id=body.list_id, segment_id=body.segment_id, status="draft",
+    )
+    db.add(c)
+    db.flush()
+    for v in body.variants:
+        db.add(CampaignVariant(campaign_id=c.id, subject=v.subject, html=v.html, text=v.text, weight=v.weight))
+    db.commit()
+    db.refresh(c)
+    return _out(db, c)
+
+
+@router.get("", response_model=list[CampaignOut])
+def list_campaigns(ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    rows = db.scalars(select(Campaign).where(Campaign.workspace_id == ctx.workspace.id).order_by(Campaign.id.desc())).all()
+    return [_out(db, c) for c in rows]
+
+
+@router.get("/{campaign_id}", response_model=CampaignOut)
+def get_campaign(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    return _out(db, _owned(db, ctx, campaign_id))
+
+
+@router.post("/{campaign_id}/send")
+def send(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    c = _owned(db, ctx, campaign_id)
+    if c.status in ("sending", "sent"):
+        raise HTTPException(status_code=409, detail=f"Campaign already {c.status}")
+    if not db.scalar(select(CampaignVariant).where(CampaignVariant.campaign_id == c.id)):
+        raise HTTPException(status_code=400, detail="Campaign has no content")
+    if c.list_id is None and c.segment_id is None:
+        raise HTTPException(status_code=400, detail="Campaign has no audience (list or segment)")
+    if c.sending_domain_id is None:
+        raise HTTPException(status_code=400, detail="Campaign has no sending domain")
+    c.status = "scheduled"
+    db.commit()
+    job = enqueue(db, ctx.workspace.id, "send_campaign", {"campaign_id": c.id})
+    return {"job_id": job.id, "status_url": f"/api/jobs/{job.id}"}
+
+
+@router.get("/{campaign_id}/analytics")
+def analytics(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    _owned(db, ctx, campaign_id)
+    return campaign_metrics(db, ctx.workspace.id, campaign_id)

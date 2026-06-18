@@ -19,6 +19,11 @@ class SendingDomain(Base, TimestampMixin, WorkspaceScopedMixin):
     dkim_selector: Mapped[str] = mapped_column(String(63), default="icereach", nullable=False)
     dkim_private_key: Mapped[str] = mapped_column(Text, nullable=False)
     dkim_public_key: Mapped[str] = mapped_column(Text, nullable=False)
+    # SMTP relay used to send for this domain (Phase 1 transport).
+    smtp_host: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    smtp_port: Mapped[int] = mapped_column(Integer, default=587, nullable=False)
+    smtp_username: Mapped[str] = mapped_column(String(320), default="", nullable=False)
+    smtp_password: Mapped[str] = mapped_column(Text, default="", nullable=False)
     spf_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     dkim_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     dmarc_verified: Mapped[bool] = mapped_column(default=False, nullable=False)

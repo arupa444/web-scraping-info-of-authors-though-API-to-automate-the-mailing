@@ -3,7 +3,11 @@ added once the importer service is available."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+import shutil
+import tempfile
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -11,6 +15,8 @@ from ..db import get_db
 from ..models import Contact
 from ..schemas.contact import ContactIn, ContactOut, ContactUpdate
 from ..security.deps import AuthContext, auth_context
+from ..services import importer  # noqa: F401 — registers the import_contacts handler
+from ..services.queue import enqueue
 
 router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 
@@ -31,6 +37,22 @@ def create_contact(body: ContactIn, ctx: AuthContext = Depends(auth_context), db
     db.commit()
     db.refresh(c)
     return _out(c)
+
+
+@router.post("/import", status_code=status.HTTP_202_ACCEPTED)
+def import_contacts(
+    file: UploadFile = File(...),
+    list_id: int | None = Form(None),
+    validate_emails: bool = Form(True),
+    ctx: AuthContext = Depends(auth_context),
+    db: DbSession = Depends(get_db),
+):
+    suffix = os.path.splitext(file.filename or "upload.csv")[1] or ".csv"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        path = tmp.name
+    job = enqueue(db, ctx.workspace.id, "import_contacts", {"file_path": path, "list_id": list_id, "validate": validate_emails})
+    return {"job_id": job.id, "status_url": f"/api/jobs/{job.id}"}
 
 
 @router.get("", response_model=list[ContactOut])
