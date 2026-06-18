@@ -1,6 +1,7 @@
 from fastapi import FastAPI, APIRouter, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.concurrency import run_in_threadpool
 from pydantic import EmailStr
 from typing import Annotated, Literal, Optional, List, Dict
 import random
@@ -14,6 +15,8 @@ import csv
 import smtplib
 import time
 import ssl
+import asyncio
+import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -30,7 +33,25 @@ import psutil
 from dotenv import load_dotenv
 load_dotenv()
 
-app = FastAPI(title="Email Tools Application for Pulsus")
+from jobs import JobManager, make_progress_callback, RUNNING, DONE, ERROR
+
+app = FastAPI(title="iceReach")
+
+# Background-job registry. Heavy operations (send/filter/scrape) run off the event
+# loop as jobs; clients poll /jobs/{id} for progress and fetch artifacts when done.
+job_manager = JobManager()
+
+
+async def _launch(job_id: str, fn, **kwargs):
+    """Run a blocking job function in the threadpool so the event loop stays responsive."""
+    job_manager.update(job_id, status=RUNNING, message="Started")
+    job_manager.cleanup_old()  # opportunistic GC of expired jobs/files
+    await run_in_threadpool(fn, job_id, **kwargs)
+
+
+def schedule_job(job_id: str, fn, **kwargs) -> None:
+    """Schedule a job to run in the background and return immediately."""
+    asyncio.create_task(_launch(job_id, fn, **kwargs))
 
 class SendEndpoint(BaseModel):
     csv_file: Annotated[UploadFile, File(..., title="CSV File", description="Upload the CSV File...")]
@@ -83,6 +104,142 @@ def log_memory_usage():
     memory_info = process.memory_info()
     print(f"Memory usage: {memory_info.rss / 1024 / 1024:.2f} MB")
 
+
+# --------------------------------------------------------------------
+# Shared DNS resolver + per-domain MX cache
+# --------------------------------------------------------------------
+# Building a resolver and doing an MX lookup per email is wasteful: a large list
+# usually contains the same handful of domains (gmail.com, etc.) thousands of times.
+# We configure one resolver once and memoize MX results per domain (negatives too,
+# so dead domains are not re-queried).
+_dns_resolver = None
+_dns_resolver_lock = threading.Lock()
+_mx_cache: Dict[str, list] = {}
+_mx_cache_lock = threading.Lock()
+
+
+def _get_resolver() -> "dns.resolver.Resolver":
+    global _dns_resolver
+    if _dns_resolver is None:
+        with _dns_resolver_lock:
+            if _dns_resolver is None:
+                resolver = dns.resolver.Resolver()
+                resolver.nameservers = ['8.8.8.8', '1.1.1.1', '208.67.222.222']
+                resolver.timeout = 5
+                resolver.lifetime = 10
+                _dns_resolver = resolver
+    return _dns_resolver
+
+
+def resolve_mx_hosts(domain: str, max_retries: int = 3) -> list:
+    """Return MX exchange hostnames (in preference order) for a domain, cached per-domain.
+
+    Returns [] when the domain has no usable MX records. Results (including empty
+    ones) are memoized for the lifetime of the process.
+    """
+    domain = (domain or "").strip().lower()
+    if not domain:
+        return []
+
+    with _mx_cache_lock:
+        if domain in _mx_cache:
+            return _mx_cache[domain]
+
+    resolver = _get_resolver()
+    hosts: list = []
+    for attempt in range(max_retries):
+        try:
+            answers = resolver.resolve(domain, 'MX')
+            records = sorted(answers, key=lambda r: r.preference)
+            hosts = [str(r.exchange).rstrip('.') for r in records]
+            break
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.NoNameservers):
+            hosts = []  # definitive negative — no point retrying
+            break
+        except dns.resolver.Timeout:
+            if attempt == max_retries - 1:
+                hosts = []
+            else:
+                time.sleep(1)
+        except Exception as e:
+            print(f"Error checking MX record for {domain}: {e}")
+            if attempt == max_retries - 1:
+                hosts = []
+            else:
+                time.sleep(1)
+
+    with _mx_cache_lock:
+        _mx_cache[domain] = hosts
+    return hosts
+
+
+# --------------------------------------------------------------------
+# Reusable SMTP session
+# --------------------------------------------------------------------
+class SmtpSession:
+    """Holds a single authenticated SMTP connection for reuse across a whole batch.
+
+    Re-authenticating per recipient is slow and more likely to trip provider rate
+    limits. This connects/logs in once and transparently reconnects if the server
+    drops the connection mid-batch.
+    """
+
+    def __init__(self, server: str, port: int, username: str, password: str):
+        self.server_host = server
+        self.port = port
+        self.username = username
+        self.password = password
+        self.client: Optional[smtplib.SMTP] = None
+
+    def _context(self) -> ssl.SSLContext:
+        context = ssl.create_default_context()
+        if self.server_host not in ("smtp.gmail.com", "smtp.office365.com", "smtp.mail.yahoo.com"):
+            # Custom/self-hosted servers may have non-public certs; relax verification.
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+        return context
+
+    def connect(self) -> None:
+        context = self._context()
+        client = smtplib.SMTP(self.server_host, self.port, timeout=30)
+        client.starttls(context=context)
+        client.login(self.username, self.password)
+        self.client = client
+
+    def _ensure(self) -> smtplib.SMTP:
+        if self.client is None:
+            self.connect()
+            return self.client
+        try:
+            if self.client.noop()[0] != 250:
+                raise smtplib.SMTPException("NOOP failed")
+        except Exception:
+            try:
+                self.client.close()
+            except Exception:
+                pass
+            self.connect()
+        return self.client
+
+    def sendmail(self, from_addr: str, to_addr: str, msg_str: str) -> None:
+        try:
+            self._ensure().sendmail(from_addr, to_addr, msg_str)
+        except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError):
+            # one transparent reconnect + retry
+            self.connect()
+            self.client.sendmail(from_addr, to_addr, msg_str)
+
+    def close(self) -> None:
+        if self.client is not None:
+            try:
+                self.client.quit()
+            except Exception:
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
+            self.client = None
+
 # ====================================================================
 # Email Sending and Validation Functions
 # ====================================================================
@@ -94,45 +251,34 @@ def render_template(rand_template_content: str, row: dict) -> str:
 
 
 def send_email(
-    row: Dict,  
+    row: Dict,
     rand_subjectForEmail: str,
     sender_email: str,
     sender_name: str,
-    sender_password: str,
     recipient_name: str,
     recipient_email: str,
-    smtp_server: str,
-    smtp_port: int,
-    rand_template_content: str
+    rand_template_content: str,
+    smtp_session: "SmtpSession",
 ) -> tuple[bool, str]:
-    """Send a personalized email to an author using HTML template."""
+    """Send a personalized email to an author using HTML template over a reused SMTP session."""
     html = render_template(rand_template_content, row)
-    formatted_subject = rand_subjectForEmail.format(**row)
+    # Use the same safe renderer as the body so a subject that references a
+    # missing/typo'd column (or contains stray braces) does not raise and abort the whole job.
+    formatted_subject = render_template(rand_subjectForEmail, row)
 
     msg = MIMEMultipart('alternative')
     msg['Subject'] = formatted_subject
     msg['From'] = formataddr((sender_name, sender_email))
     msg['To'] = formataddr((recipient_name, recipient_email))
     msg.attach(MIMEText(html, 'html'))
-    
 
     try:
-        if smtp_server in ["smtp.gmail.com", "smtp.office365.com", "smtp.mail.yahoo.com"]:
-            context = ssl.create_default_context()
-        else:
-            context = ssl.create_default_context()
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-        
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls(context=context)
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, recipient_email, msg.as_string())
+        smtp_session.sendmail(sender_email, recipient_email, msg.as_string())
         return True, "Email sent successfully"
     except smtplib.SMTPAuthenticationError:
         return False, "Authentication failed. Check your email and password."
     except smtplib.SMTPConnectError as e:
-        return False, f"Could not connect to SMTP server '{smtp_server}:{smtp_port}': {e}. Try asking your email provider for the correct SMTP settings."
+        return False, f"Could not connect to SMTP server '{smtp_session.server_host}:{smtp_session.port}': {e}. Try asking your email provider for the correct SMTP settings."
     except smtplib.SMTPRecipientsRefused:
         return True, "Recipient email address refused by the SMTP server. YOUR EMAIL MAY HAVE BEEN BLOCKED."
     except Exception as e:
@@ -145,29 +291,8 @@ def is_valid_syntax(email: str) -> bool:
     return re.match(pattern, email) is not None
 
 def has_mx_record(domain: str) -> bool:
-    """Check if domain has MX record with retry logic."""
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            # Use different DNS resolvers for redundancy
-            resolvers = ['8.8.8.8', '1.1.1.1', '208.67.222.222']
-            resolver = dns.resolver.Resolver()
-            resolver.nameservers = resolvers
-            resolver.timeout = 5
-            resolver.lifetime = 10
-            
-            records = resolver.resolve(domain, 'MX')
-            return bool(records)
-        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
-            if attempt == max_retries - 1:
-                return False
-            time.sleep(1)
-        except Exception as e:
-            print(f"Error checking MX record for {domain}: {e}")
-            if attempt == max_retries - 1:
-                return False
-            time.sleep(1)
-    return False
+    """Check if domain has an MX record (cached, shared resolver with retry)."""
+    return bool(resolve_mx_hosts(domain))
 
 def validate_email(email: str) -> str:
     """Comprehensive email validation."""
@@ -180,9 +305,9 @@ def validate_email(email: str) -> str:
 
     return "Deliverable"
 
-async def process_csv_and_send_emails(
+def process_csv_and_send_emails(
     subjectForEmail: List,
-    csv_file_path: str, 
+    csv_file_path: str,
     sender_email: str,
     sender_name: str,
     sender_password: str,
@@ -191,9 +316,14 @@ async def process_csv_and_send_emails(
     template_content: List,
     max_emails: int,
     delay: int = 5,
-    original_file_extension: str = '.csv'
+    original_file_extension: str = '.csv',
+    progress_cb: Optional[callable] = None,
 ) -> tuple[list[dict], dict, Optional[str], Optional[pd.DataFrame]]:
-    """Process data file (CSV/Excel) and send emails to authors."""
+    """Process data file (CSV/Excel) and send emails to authors.
+
+    Synchronous and blocking by design (SMTP/DNS/sleep); the caller runs it in a
+    worker thread. `progress_cb(percent, message)` is invoked per row if provided.
+    """
     results = []
     validation_stats = {
         "valid_syntax": 0,
@@ -203,6 +333,7 @@ async def process_csv_and_send_emails(
     }
     processing_error = None
     df = None
+    smtp_session = SmtpSession(smtp_server, smtp_port, sender_email, sender_password)
 
     try:
         # Use pandas to read the file based on its extension
@@ -237,6 +368,17 @@ async def process_csv_and_send_emails(
             max_emails_actual = min(max_emails, len(csv_rows))
 
         print(f"\nStarting to process {max_emails_actual} emails with {delay} second delays...")
+        if progress_cb:
+            progress_cb(0, f"Connecting to {smtp_server}...")
+
+        # Open the SMTP connection once up front so an authentication/connection
+        # failure surfaces immediately instead of after validating the whole file.
+        try:
+            smtp_session.connect()
+        except smtplib.SMTPAuthenticationError:
+            raise ValueError("Authentication failed. Check your sender email and password (use an app password for Gmail/Outlook/Yahoo).")
+        except Exception as e:
+            raise ValueError(f"Could not connect to SMTP server '{smtp_server}:{smtp_port}': {e}")
 
         processed_indices = [] # Keep track of original DataFrame indices of processed rows
 
@@ -257,8 +399,12 @@ async def process_csv_and_send_emails(
             emails_list = [e.strip() for e in str(emails).split(';') if e.strip()]
 
             print(f"\nProcessing row {i + 1}/{max_emails_actual}: {name}")
+            if progress_cb:
+                progress_cb((i / max_emails_actual) * 100, f"Processing {i + 1}/{max_emails_actual}: {name}")
 
             row_had_any_email_attempted = False # Flag to mark if any email from this row was attempted
+            success = True # Default for this row: only flips to False on an actual send failure.
+                           # Prevents UnboundLocalError when a row has no deliverable email.
             for email in emails_list:
                 if not email:
                     continue
@@ -292,12 +438,12 @@ async def process_csv_and_send_emails(
                 print(f"    ✓ Valid - Attempting to send email to {email} via {smtp_server}:{smtp_port}...")
                 filename, rand_template_content = random.choice(template_content)
                 print(f"    Using template: {filename}")
-                
+
                 rand_subjectForEmail = random.choice(subjectForEmail)
                 print(f"    Using subject: {rand_subjectForEmail}")
 
                 success, message = send_email(
-                    row, rand_subjectForEmail, sender_email, sender_name, sender_password, name, email, smtp_server, smtp_port, rand_template_content
+                    row, rand_subjectForEmail, sender_email, sender_name, name, email, rand_template_content, smtp_session
                 )
                 
                 result = {
@@ -344,6 +490,8 @@ async def process_csv_and_send_emails(
     except Exception as e:
         processing_error = f"An unexpected error occurred during data processing or email sending: {e}"
         remaining_df = pd.DataFrame()
+    finally:
+        smtp_session.close()
 
     return results, validation_stats, processing_error, remaining_df
 
@@ -388,22 +536,23 @@ def is_valid_syntax_filter(email):
     return re.match(pattern, email) is not None
 
 def has_mx_record_filter(domain):
-    """Check if domain has MX record"""
-    try:
-        records = dns.resolver.resolve(domain, 'MX', lifetime=5)
-        return bool(records)
-    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
-        return False
+    """Check if domain has an MX record (cached, shared resolver)."""
+    return bool(resolve_mx_hosts(domain))
 
 def check_smtp_filter(email, sender_email):
-    """Check if SMTP server accepts the email"""
+    """Check if the recipient's mail server accepts the address via an SMTP RCPT probe.
+
+    Note: many large providers (Gmail/Yahoo/Outlook) accept-all or block probes, so a
+    negative result here is not authoritative. Uses the cached MX lookup.
+    """
     domain = email.split('@')[1]
+    mx_hosts = resolve_mx_hosts(domain)
+    if not mx_hosts:
+        return False
     try:
-        mx_records = dns.resolver.resolve(domain, 'MX', lifetime=5)
-        mx_record = str(mx_records[0].exchange)
         server = smtplib.SMTP(timeout=10)
         server.set_debuglevel(0)
-        server.connect(mx_record)
+        server.connect(mx_hosts[0])
         server.helo(server.local_hostname)
         server.mail(sender_email)
         code, message = server.rcpt(email)
@@ -426,7 +575,9 @@ def validate_email_filter(email, sender_email):
     else:
         return "Non-deliverable"
 
-def process_csv_file_filter(input_path: str, sender_email: str, checkpoint_file: str = None) -> str:
+def process_csv_file_filter(input_path: str, sender_email: str, checkpoint_file: str = None,
+                            output_base_name: str = None, output_dir: str = ".",
+                            progress_cb: Optional[callable] = None) -> str:
     """
     Processes a CSV or Excel file, filters emails based on validation,
     and saves deliverable emails to a new CSV. Supports resuming processing from a checkpoint.
@@ -436,6 +587,9 @@ def process_csv_file_filter(input_path: str, sender_email: str, checkpoint_file:
         sender_email (str): The sender email to be used in validation logic.
         checkpoint_file (str, optional): Path to a checkpoint file for resuming.
                                          If None, a default filename will be generated.
+        output_base_name (str, optional): Stable base name for output/checkpoint files.
+        output_dir (str): Directory to write the filtered output and checkpoint into.
+        progress_cb (callable, optional): progress_cb(percent, message) for live updates.
 
     Returns:
         str: The path to the filtered output CSV file.
@@ -443,13 +597,19 @@ def process_csv_file_filter(input_path: str, sender_email: str, checkpoint_file:
     Raises:
         HTTPException: If the file cannot be read, lacks an 'emails' column, or is an unsupported type.
     """
-    
+
     base_name = os.path.basename(input_path)
-    file_name, file_ext = os.path.splitext(base_name)
-    output_path = f"filtered_{file_name}.csv" # Filtered output is always a CSV
+    # The extension comes from the actual (temp) input file, but output/checkpoint
+    # names must be derived from a STABLE identifier so a job can be resumed across
+    # uploads. The random temp filename is not stable, so prefer output_base_name
+    # (the original uploaded filename) when provided.
+    _, file_ext = os.path.splitext(base_name)
+    name_for_outputs = output_base_name if output_base_name else os.path.splitext(base_name)[0]
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"filtered_{name_for_outputs}.csv") # Filtered output is always a CSV
 
     if checkpoint_file is None:
-        checkpoint_file = f"{file_name}_checkpoint.txt"
+        checkpoint_file = os.path.join(output_dir, f"{name_for_outputs}_checkpoint.txt")
 
     initial_processed_rows_from_checkpoint = 0
     if os.path.exists(checkpoint_file):
@@ -548,7 +708,10 @@ def process_csv_file_filter(input_path: str, sender_email: str, checkpoint_file:
             current_total_skipped = overall_skipped_count_at_start + skipped_rows_current_session
             print(f"Progress: Processed {current_global_row_number}/{total_rows_in_input} rows. Deliverable (Total): {current_total_deliverable}, Skipped (Total): {current_total_skipped}")
             log_memory_usage()
-            
+            if progress_cb and total_rows_in_input:
+                progress_cb((current_global_row_number / total_rows_in_input) * 100,
+                            f"Validated {current_global_row_number}/{total_rows_in_input} — {current_total_deliverable} deliverable")
+
             if current_global_row_number % 1000 == 0:
                 gc.collect()
 
@@ -591,6 +754,33 @@ def process_csv_file_filter(input_path: str, sender_email: str, checkpoint_file:
 # Email Scraper Functions
 # ====================================================================
 
+# NCBI Entrez rate limits: 3 requests/sec without an API key, 10/sec with one.
+# Set NCBI_API_KEY in the environment to raise the limit and speed up scraping.
+NCBI_API_KEY = os.getenv("NCBI_API_KEY", "").strip()
+_ncbi_min_interval = 1.0 / (10 if NCBI_API_KEY else 3)
+_ncbi_last_request_at = 0.0
+_ncbi_throttle_lock = threading.Lock()
+
+
+def _ncbi_url(url: str) -> str:
+    """Append the NCBI API key to an Entrez URL when one is configured."""
+    if NCBI_API_KEY:
+        sep = '&' if '?' in url else '?'
+        return f"{url}{sep}api_key={NCBI_API_KEY}"
+    return url
+
+
+def _ncbi_throttle() -> None:
+    """Block just long enough to respect the NCBI per-second request limit."""
+    global _ncbi_last_request_at
+    with _ncbi_throttle_lock:
+        elapsed = time.monotonic() - _ncbi_last_request_at
+        wait = _ncbi_min_interval - elapsed
+        if wait > 0:
+            time.sleep(wait)
+        _ncbi_last_request_at = time.monotonic()
+
+
 def extract_emails_scrape(text):
     """Extract email addresses from text using regex"""
     if not text:
@@ -599,9 +789,11 @@ def extract_emails_scrape(text):
     return re.findall(email_pattern, text)
 
 def make_request_with_retry_scrape(url, max_retries=3, delay=1):
-    """Make a request with retry logic"""
+    """Make a rate-limited request with retry logic (adds NCBI API key if present)."""
+    url = _ncbi_url(url)
     for attempt in range(max_retries):
         try:
+            _ncbi_throttle()
             response = requests.get(url, timeout=30)
             response.raise_for_status()
             return response
@@ -612,7 +804,7 @@ def make_request_with_retry_scrape(url, max_retries=3, delay=1):
             else:
                 raise
 
-def process_batch(batch_ids, details_url, unique_authors, max_authors, current_batch_num, total_batches):
+def process_batch(batch_ids, details_url, unique_authors, max_authors, current_batch_num, total_batches, progress_cb=None):
     """Process a batch of article IDs"""
     details_response = make_request_with_retry_scrape(details_url)
     
@@ -689,8 +881,13 @@ def process_batch(batch_ids, details_url, unique_authors, max_authors, current_b
                     # Add all emails to the tracking set
                     for email in emails:
                         unique_authors[email] = True
-                    
-                    unique_authors[author_name] = {
+
+                    # Key author records by a unique, collision-free key (their first,
+                    # guaranteed-unseen email) instead of author_name. Different people who
+                    # share a name — or the many "Unknown Author" fallbacks — would otherwise
+                    # overwrite each other and silently vanish from the output.
+                    author_key = f"__author__::{emails[0]}"
+                    unique_authors[author_key] = {
                         'name': author_name,
                         'emails': emails,
                         'affiliations': affiliations,
@@ -699,17 +896,17 @@ def process_batch(batch_ids, details_url, unique_authors, max_authors, current_b
                     }
                     batch_emails_found += 1
 
-    time.sleep(1)
-
     # Calculate progress percentage
     current_total = len([k for k in unique_authors if isinstance(unique_authors[k], dict)])
     progress_percentage = min(100, int((current_total / max_authors) * 100))
-    
+
     print(f"Batch {current_batch_num} | New: {batch_emails_found} | Dups: {batch_duplicates_filtered} | Total: {current_total}/{max_authors} | Progress: {progress_percentage}%")
-    
+    if progress_cb:
+        progress_cb(progress_percentage, f"Found {current_total} authors with emails (batch {current_batch_num})")
+
     return total_processed_in_batch, batch_emails_found
 
-def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000):
+def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000, progress_cb=None):
     """
     Search for authors with emails in PubMed related to a specific topic.
     Only includes authors that have at least one email address.
@@ -786,8 +983,8 @@ def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000):
                     
                     try:
                         processed_in_sub_batch, new_in_sub_batch = process_batch(
-                            sub_batch_ids, sub_details_url, unique_authors, max_authors, 
-                            current_batch, 0  # We don't need total_batches for sub-batches
+                            sub_batch_ids, sub_details_url, unique_authors, max_authors,
+                            current_batch, 0, progress_cb  # We don't need total_batches for sub-batches
                         )
                         total_processed += processed_in_sub_batch
                     except Exception as e:
@@ -802,8 +999,8 @@ def search_pubmed_authors_with_emails_scrape(search_term, max_authors=100000):
             else:
                 try:
                     processed_in_batch, new_in_batch = process_batch(
-                        batch_ids, details_url, unique_authors, max_authors, 
-                        current_batch, 0  # We don't need total_batches for batches
+                        batch_ids, details_url, unique_authors, max_authors,
+                        current_batch, 0, progress_cb  # We don't need total_batches for batches
                     )
                     total_processed += processed_in_batch
                 except Exception as e:
@@ -865,6 +1062,142 @@ def export_to_csv_scrape(data, filename):
             })
     print(f"Data exported to {filename}")
     return filename
+
+# ====================================================================
+# Background job runners (executed in a worker thread off the event loop)
+# ====================================================================
+
+def _run_send_job(job_id, *, temp_data_file_path, file_extension, original_filename,
+                  subjectForEmail, sender_email, sender_name, sender_password,
+                  smtp_server, smtp_port, template_content, max_emails, delay):
+    progress_cb = make_progress_callback(job_manager, job_id)
+    download_names = {}
+    try:
+        results, validation_stats, processing_error, remaining_df = process_csv_and_send_emails(
+            subjectForEmail=subjectForEmail,
+            csv_file_path=temp_data_file_path,
+            sender_email=sender_email,
+            sender_name=sender_name,
+            sender_password=sender_password,
+            smtp_server=smtp_server,
+            smtp_port=smtp_port,
+            template_content=template_content,
+            max_emails=max_emails,
+            delay=delay,
+            original_file_extension=file_extension,
+            progress_cb=progress_cb,
+        )
+
+        if processing_error:
+            job_manager.update(job_id, status=ERROR, error=processing_error, message=processing_error)
+            return
+
+        summary = display_summary(results, validation_stats)
+
+        # Per-recipient feedback CSV
+        feedback_path = os.path.join(job_manager.output_dir, f"email_feedback_{job_id}.csv")
+        try:
+            with open(feedback_path, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=['name', 'email', 'success', 'message'])
+                writer.writeheader()
+                for r in results:
+                    writer.writerow({k: r[k] for k in ('name', 'email', 'success', 'message')})
+            job_manager.attach_file(job_id, "feedback", feedback_path)
+            download_names["feedback"] = "email_feedback.csv"
+        except Exception as e:
+            print(f"Error creating feedback CSV: {e}")
+
+        # Remaining (unsent) rows, in the original file format
+        if remaining_df is not None and not remaining_df.empty:
+            base_no_ext, ext = os.path.splitext(original_filename)
+            remaining_path = os.path.join(job_manager.output_dir, f"{base_no_ext}_updateAfterDel_{job_id}{ext}")
+            try:
+                if ext.lower() in ('.xlsx', '.xls', '.xlsn', '.xlsb', '.xltm', '.xltx'):
+                    remaining_df.to_excel(remaining_path, index=False)
+                else:
+                    remaining_path = os.path.join(job_manager.output_dir, f"{base_no_ext}_updateAfterDel_{job_id}.csv")
+                    remaining_df.to_csv(remaining_path, index=False, encoding='utf-8')
+                job_manager.attach_file(job_id, "remaining", remaining_path)
+                download_names["remaining"] = f"{base_no_ext}_updateAfterDel{os.path.splitext(remaining_path)[1]}"
+            except Exception as e:
+                print(f"Error saving updated data file: {e}")
+
+        result = {
+            "status": "Email sending process completed.",
+            "summary": summary,
+            "download_names": download_names,
+        }
+        job_manager.update(job_id, status=DONE, progress=100, message="Completed", result=result)
+    except Exception as e:
+        print(f"An unexpected error occurred in send job: {e}")
+        job_manager.update(job_id, status=ERROR, error=str(e), message=str(e))
+    finally:
+        if temp_data_file_path and os.path.exists(temp_data_file_path):
+            os.remove(temp_data_file_path)
+            print(f"Temporary data file removed: {temp_data_file_path}")
+
+
+def _run_filter_job(job_id, *, temp_input_file_path, sender_email, checkpoint_file, stable_base_name):
+    progress_cb = make_progress_callback(job_manager, job_id)
+    try:
+        output_path = process_csv_file_filter(
+            temp_input_file_path, sender_email,
+            checkpoint_file=checkpoint_file,
+            output_base_name=stable_base_name,
+            output_dir=job_manager.output_dir,
+            progress_cb=progress_cb,
+        )
+        job_manager.attach_file(job_id, "result", output_path)
+        result = {
+            "status": "Filtering complete.",
+            "download_names": {"result": os.path.basename(output_path)},
+        }
+        job_manager.update(job_id, status=DONE, progress=100, message="Completed", result=result)
+    except HTTPException as he:
+        job_manager.update(job_id, status=ERROR, error=str(he.detail), message=str(he.detail))
+    except Exception as e:
+        print(f"An unexpected error occurred in filter job: {e}")
+        job_manager.update(job_id, status=ERROR, error=str(e), message=str(e))
+    finally:
+        if temp_input_file_path and os.path.exists(temp_input_file_path):
+            os.remove(temp_input_file_path)
+            print(f"Temporary input file removed: {temp_input_file_path}")
+
+
+def _run_scrape_job(job_id, *, search_term, max_authors):
+    progress_cb = make_progress_callback(job_manager, job_id)
+    try:
+        authors_data = search_pubmed_authors_with_emails_scrape(search_term, max_authors, progress_cb=progress_cb)
+        if not authors_data:
+            job_manager.update(job_id, status=ERROR,
+                               error="No authors with emails found for the search term.",
+                               message="No authors found")
+            return
+
+        unique_authors_count = len(authors_data)
+        all_emails = set()
+        for author in authors_data:
+            for email in author['emails']:
+                all_emails.add(email)
+        total_unique_emails = len(all_emails)
+
+        safe_filename = re.sub(r'[^\w\s-]', '', search_term).strip().replace(' ', '_') or "authors"
+        out_path = os.path.join(job_manager.output_dir, f"{safe_filename}_authors_{job_id}.csv")
+        export_to_csv_scrape(authors_data, out_path)
+        job_manager.attach_file(job_id, "result", out_path)
+
+        result = {
+            "status": "Scraping complete.",
+            "success_message": f"Successfully extracted {total_unique_emails} unique emails from {unique_authors_count} authors.",
+            "unique_authors": unique_authors_count,
+            "total_unique_emails": total_unique_emails,
+            "download_names": {"result": f"{safe_filename}_authors_with_emails.csv"},
+        }
+        job_manager.update(job_id, status=DONE, progress=100, message="Completed", result=result)
+    except Exception as e:
+        print(f"An unexpected error occurred in scrape job: {e}")
+        job_manager.update(job_id, status=ERROR, error=str(e), message=str(e))
+
 
 # ====================================================================
 # FastAPI Routers
@@ -935,68 +1268,68 @@ async def send_emails_endpoint(
     else:
         raise HTTPException(status_code=400, detail="Invalid SMTP port option.")
 
-    temp_data_file_path = None 
-
-    try:
-        # Read uploaded email template content
-        for file in email_template_files:
-            try:
-                if not file.filename.lower().endswith(".html"):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid file type: {file.filename}. Only .html files are allowed."
-                    )
-
-                content_bytes = await file.read()
-                try:
-                    content_str = content_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Failed to decode {file.filename}. Ensure it's saved as UTF-8."
-                    )
-
-                if not content_str.strip():
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Template file {file.filename} is empty."
-                    )
-
-                templates.append((file.filename, content_str))
-
-            except HTTPException:
-                # Re-raise FastAPI specific errors
-                raise
-            except Exception as e:
+    # Read uploaded email template content (fast; validated synchronously so the
+    # user gets immediate 400s for bad templates before a job is queued).
+    for file in email_template_files:
+        try:
+            if not file.filename.lower().endswith(".html"):
                 raise HTTPException(
-                    status_code=500,
-                    detail=f"Unexpected error while processing {file.filename}: {str(e)}"
+                    status_code=400,
+                    detail=f"Invalid file type: {file.filename}. Only .html files are allowed."
                 )
 
-        if not templates:
-            raise HTTPException(status_code=400, detail="No valid HTML templates found in uploaded folder.")
+            content_bytes = await file.read()
+            try:
+                content_str = content_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to decode {file.filename}. Ensure it's saved as UTF-8."
+                )
 
+            if not content_str.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Template file {file.filename} is empty."
+                )
 
-        # Save the uploaded data file to a temporary file
-        original_filename = csv_file.filename
-        file_extension = os.path.splitext(original_filename)[1]
+            templates.append((file.filename, content_str))
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unexpected error while processing {file.filename}: {str(e)}"
+            )
+
+    if not templates:
+        raise HTTPException(status_code=400, detail="No valid HTML templates found in uploaded folder.")
+
+    # Save the uploaded data file to a temporary file (the job removes it when done)
+    original_filename = csv_file.filename
+    file_extension = os.path.splitext(original_filename)[1]
+    temp_data_file_path = None
+    try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp:
             shutil.copyfileobj(csv_file.file, tmp)
             temp_data_file_path = tmp.name
-
         print(f"Uploaded data file saved temporarily to: {temp_data_file_path}")
-        storeTempSubject = []
-        for i in subjectForEmail:
-            if i != '':
-                storeTempSubject.append(i)
-                
-        subjectForEmail = storeTempSubject[:]
-        storeTempSubject = None
-        # Process emails
-        results, validation_stats, processing_error, remaining_df = await process_csv_and_send_emails(
+
+        # Drop empty subject entries
+        subjectForEmail = [s for s in subjectForEmail if s != '']
+        if not subjectForEmail:
+            raise HTTPException(status_code=400, detail="At least one non-empty subject is required.")
+
+        # Launch the send as a background job and return its id immediately.
+        job_id = job_manager.create("send", message="Queued — sending emails")
+        schedule_job(
+            job_id, _run_send_job,
+            temp_data_file_path=temp_data_file_path,
+            file_extension=file_extension,
+            original_filename=original_filename,
             subjectForEmail=subjectForEmail,
-            csv_file_path=temp_data_file_path, 
-            sender_email=sender_email,
+            sender_email=str(sender_email),
             sender_name=sender_name,
             sender_password=sender_password,
             smtp_server=smtp_server,
@@ -1004,82 +1337,18 @@ async def send_emails_endpoint(
             template_content=templates,
             max_emails=max_emails,
             delay=delay,
-            original_file_extension=file_extension
         )
-
-        if processing_error:
-            raise HTTPException(status_code=500, detail=processing_error)
-
-        summary = display_summary(results, validation_stats)
-        
-        # Create feedback CSV file
-        feedback_csv_path = None
-        try:
-            feedback_csv_path = f"email_feedback_{int(time.time())}.csv"
-            with open(feedback_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['name', 'email', 'success', 'message']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                
-                for result in results:
-                    writer.writerow({
-                        'name': result['name'],
-                        'email': result['email'],
-                        'success': result['success'],
-                        'message': result['message']
-                    })
-        except Exception as e:
-            print(f"Error creating feedback CSV: {e}")
-            feedback_csv_path = None
-
-        # After processing emails and getting results, save the remaining rows
-        updated_data_filename = None
-        if remaining_df is not None and not remaining_df.empty:
-            filename_without_ext, ext = os.path.splitext(original_filename)
-            new_data_filename = f"{filename_without_ext}_updateAfterDel{ext}"
-            
-            # Save the new file in the current working directory
-            new_data_file_path = new_data_filename
-            
-            # Save the remaining DataFrame to a new file based on original extension
-            try:
-                if ext.lower() == '.csv':
-                    remaining_df.to_csv(new_data_file_path, index=False, encoding='utf-8')
-                elif ext.lower() in ['.xlsx', '.xls', '.xlsn', '.xlsb', '.xltm', '.xltx']:
-                    remaining_df.to_excel(new_data_file_path, index=False)
-                else:
-                    print(f"Warning: Could not save updated file with extension {ext}. Falling back to CSV format.")
-                    remaining_df.to_csv(new_data_file_path, index=False, encoding='utf-8')
-                updated_data_filename = new_data_file_path
-                print(f"New updated file created with remaining data: {new_data_file_path}")
-            except Exception as e:
-                print(f"Error saving updated data file: {e}")
-        else:
-            print("No remaining rows to save or remaining_df is None/empty.")
-
-
-        # Return JSONResponse with summary and paths to generated files if any
-        response_content = {
-            "status": "Email sending process completed.",
-            "summary": summary
-        }
-        if feedback_csv_path and os.path.exists(feedback_csv_path):
-            response_content["feedback_csv_filename"] = os.path.basename(feedback_csv_path)
-        if updated_data_filename and os.path.exists(updated_data_filename):
-            response_content["updated_data_filename"] = os.path.basename(updated_data_filename)
-            
-        return JSONResponse(content=response_content)
-
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        print(f"An unexpected error occurred in send_emails_endpoint: {e}")
-        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
-    finally:
+        return JSONResponse(status_code=202, content={"job_id": job_id, "status_url": f"/jobs/{job_id}"})
+    except HTTPException:
         if temp_data_file_path and os.path.exists(temp_data_file_path):
             os.remove(temp_data_file_path)
-            print(f"Temporary data file removed: {temp_data_file_path}")
-            
+        raise
+    except Exception as e:
+        if temp_data_file_path and os.path.exists(temp_data_file_path):
+            os.remove(temp_data_file_path)
+        print(f"An unexpected error occurred in send_emails_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
+
 # Email Filter Router
 
 
@@ -1102,7 +1371,6 @@ async def filter_emails_endpoint(
         raise HTTPException(status_code=400, detail=f"Please upload a valid file with one of these extensions: {', '.join(allowed_extensions)}.")
 
     temp_input_file_path = None
-    filtered_output_file_path = None
     checkpoint_file_for_resume = None
 
     try:
@@ -1113,42 +1381,37 @@ async def filter_emails_endpoint(
 
         print(f"Uploaded file saved temporarily to: {temp_input_file_path}")
 
+        # Derive a STABLE base name from the original uploaded filename (the temp file
+        # name is random and changes every upload, so it can never match a prior checkpoint).
+        original_base = os.path.splitext(os.path.basename(csv_file.filename))[0]
+        stable_base_name = re.sub(r'[^\w\-]+', '_', original_base).strip('_') or "upload"
+
         # Set up checkpoint file path if resuming
         if resume:
-            base_name_temp = os.path.basename(temp_input_file_path)
-            file_name_temp, _ = os.path.splitext(base_name_temp)
-            checkpoint_file_for_resume = f"{file_name_temp}_checkpoint.txt"
-            
+            checkpoint_file_for_resume = os.path.join(job_manager.output_dir, f"{stable_base_name}_checkpoint.txt")
             if not os.path.exists(checkpoint_file_for_resume):
-                raise HTTPException(status_code=400, detail="Resume requested, but no checkpoint file found to resume from. Please ensure the original file name and its temporary path context are consistent with a prior run.")
-        
-        # Process the file to filter emails
-        filtered_output_file_path = process_csv_file_filter(temp_input_file_path, sender_email, checkpoint_file_for_resume)
+                raise HTTPException(status_code=400, detail="Resume requested, but no checkpoint file found to resume from. Please re-upload the same file that was being processed previously.")
 
-        # Return the filtered file
-        return FileResponse(
-            path=filtered_output_file_path,
-            filename=os.path.basename(filtered_output_file_path),
-            media_type='text/csv' # The output is always a CSV
+        # Launch the filter as a background job and return its id immediately.
+        job_id = job_manager.create("filter", message="Queued — filtering emails")
+        schedule_job(
+            job_id, _run_filter_job,
+            temp_input_file_path=temp_input_file_path,
+            sender_email=str(sender_email),
+            checkpoint_file=checkpoint_file_for_resume,
+            stable_base_name=stable_base_name,
         )
+        return JSONResponse(status_code=202, content={"job_id": job_id, "status_url": f"/jobs/{job_id}"})
 
-    except HTTPException as e:
-        # Re-raise HTTPExceptions as they are specific errors to be handled by FastAPI
-        raise e
-    except Exception as e:
-        # Catch any other unexpected errors and provide a generic 500 response
-        print(f"An unexpected error occurred in filter_emails_endpoint: {e}")
-        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
-    finally:
-        # Clean up the temporary input file
+    except HTTPException:
         if temp_input_file_path and os.path.exists(temp_input_file_path):
             os.remove(temp_input_file_path)
-            print(f"Temporary input file removed: {temp_input_file_path}")
-        
-        # The filtered_output_file_path is returned as a FileResponse and should not be
-        # removed immediately here. FastAPI handles sending it. If a more
-        # robust temporary file cleanup is needed for output files after they are served,
-        # it should be implemented as a separate scheduled task or a FastAPI background task.
+        raise
+    except Exception as e:
+        if temp_input_file_path and os.path.exists(temp_input_file_path):
+            os.remove(temp_input_file_path)
+        print(f"An unexpected error occurred in filter_emails_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
 
 # Email Scraper Router
 
@@ -1160,47 +1423,42 @@ async def scrape_emails_endpoint(
     max_authors: int = Form(10000),
 ):
     try:
-        # Scrape author data from PubMed
-        authors_data = search_pubmed_authors_with_emails_scrape(search_term, max_authors)
-        
-        if not authors_data:
-            raise HTTPException(status_code=404, detail="No authors with emails found for the search term.")
-        
-        # Calculate statistics
-        unique_authors_count = len(authors_data)
-        
-        # Calculate total unique emails
-        all_emails = set()
-        for author in authors_data:
-            for email in author['emails']:
-                all_emails.add(email)
-        total_unique_emails = len(all_emails)
-        
-        # Generate a safe filename
-        safe_filename = re.sub(r'[^\w\s-]', '', search_term).strip().replace(' ', '_')
-        csv_filename = f"{safe_filename}_authors_with_emails.csv"
-        
-        # Create a temporary file to store the CSV data
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', newline='', encoding='utf-8') as tmp:
-            # Export data to CSV
-            export_to_csv_scrape(authors_data, tmp.name)
-            temp_file_path = tmp.name
-        
-        # Return the CSV file
-        response = FileResponse(
-            path=temp_file_path,
-            filename=csv_filename,
-            media_type='text/csv'
-        )
-        
-        # Add custom success message with statistics
-        success_message = f"Successfully extracted {total_unique_emails} unique emails from {unique_authors_count} authors."
-        response.headers["X-Success-Message"] = success_message
-        
-        return response
-        
+        job_id = job_manager.create("scrape", message="Queued — scraping PubMed")
+        schedule_job(job_id, _run_scrape_job, search_term=search_term, max_authors=max_authors)
+        return JSONResponse(status_code=202, content={"job_id": job_id, "status_url": f"/jobs/{job_id}"})
+
     except HTTPException as e:
         raise e
     except Exception as e:
         print(f"An unexpected error occurred in scrape_emails_endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
+
+
+# ====================================================================
+# Job status & artifact download endpoints
+# ====================================================================
+
+@app.get("/jobs/{job_id}", summary="Get background job status / progress / result")
+def get_job_status(job_id: str):
+    view = job_manager.public_view(job_id)
+    if view is None:
+        raise HTTPException(status_code=404, detail="Job not found (it may have expired).")
+    return JSONResponse(content=view)
+
+
+@app.get("/jobs/{job_id}/download/{key}", summary="Download a generated job artifact")
+def download_job_file(job_id: str, key: str):
+    job = job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found (it may have expired).")
+    path = job["files"].get(key)
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"No '{key}' artifact available for this job.")
+
+    # Prefer a friendly download name recorded by the job
+    download_name = os.path.basename(path)
+    result = job.get("result") or {}
+    download_name = (result.get("download_names") or {}).get(key, download_name)
+
+    media_type = 'text/csv' if download_name.lower().endswith('.csv') else 'application/octet-stream'
+    return FileResponse(path=path, filename=download_name, media_type=media_type)

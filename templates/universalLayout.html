@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Tools - Pulsus</title>
+    <title>iceReach — Email Tools</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
@@ -225,7 +225,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <i class="bi bi-envelope-paper-heart"></i> Pulsus Email Tools
+                <i class="bi bi-envelope-paper-heart"></i> iceReach
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -267,6 +267,82 @@
 
     <!-- Bootstrap JS Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Shared background-job helper: submit a form, poll progress, expose results -->
+    <script>
+        window.iceReachJob = (function () {
+            // POST a form, expect 202 + {job_id}, then poll until done/error.
+            async function startAndPoll(url, method, formData, handlers) {
+                try {
+                    const res = await fetch(url, { method: method || 'POST', body: formData });
+                    const text = await res.text();
+                    if (res.status !== 202) {
+                        let detail = text;
+                        try { detail = JSON.parse(text).detail || text; } catch (e) { }
+                        handlers.onError(`Error ${res.status}: ${detail}`);
+                        return;
+                    }
+                    poll(JSON.parse(text).job_id, handlers);
+                } catch (e) {
+                    handlers.onError(`Network error: ${e.message}`);
+                }
+            }
+
+            function poll(jobId, handlers) {
+                const tick = async () => {
+                    try {
+                        const res = await fetch(`/jobs/${jobId}`);
+                        if (!res.ok) { handlers.onError(`Could not read job status (${res.status}).`); return; }
+                        const job = await res.json();
+                        if (handlers.onProgress) handlers.onProgress(job);
+                        if (job.status === 'done') { handlers.onDone(job); return; }
+                        if (job.status === 'error') { handlers.onError(job.error || job.message || 'Job failed.'); return; }
+                        setTimeout(tick, 1200);
+                    } catch (e) {
+                        handlers.onError(`Network error while polling: ${e.message}`);
+                    }
+                };
+                tick();
+            }
+
+            // Render / update a Bootstrap progress bar inside `container`.
+            function renderProgress(container, job) {
+                let wrap = container.querySelector('.ice-progress');
+                if (!wrap) {
+                    container.insertAdjacentHTML('beforeend',
+                        `<div class="ice-progress mt-3">
+                           <div class="progress" style="height:22px;">
+                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:0%">0%</div>
+                           </div>
+                           <p class="text-muted mt-2 ice-progress-msg mb-0"></p>
+                         </div>`);
+                    wrap = container.querySelector('.ice-progress');
+                }
+                const pct = Math.max(0, Math.min(100, Math.round(job.progress || 0)));
+                const pb = wrap.querySelector('.progress-bar');
+                pb.style.width = pct + '%';
+                pb.textContent = pct + '%';
+                wrap.querySelector('.ice-progress-msg').textContent = job.message || '';
+            }
+
+            function clearProgress(container) {
+                const wrap = container.querySelector('.ice-progress');
+                if (wrap) wrap.remove();
+            }
+
+            // Trigger a browser download of a job artifact (server sets the filename).
+            function download(jobId, key) {
+                const a = document.createElement('a');
+                a.href = `/jobs/${jobId}/download/${key}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+
+            return { startAndPoll, renderProgress, clearProgress, download };
+        })();
+    </script>
+
     {% block scripts %}{% endblock %}
 </body>
 

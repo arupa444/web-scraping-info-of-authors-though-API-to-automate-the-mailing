@@ -1,11 +1,11 @@
 {% extends "universalLayout.html" %}
 
 {% block head %}
-<title>Email Sender - Pulsus</title>
+<title>iceReach — Email Sender</title>
 {% endblock %}
 
 {% block hero_title %}<i class="bi bi-envelope-paper-heart"></i> Automated Email Sender{% endblock %}
-{% block hero_subtitle %}For all the <b>Pulsus domains and brands</b><br>Use <b>VPN</b> before run it, if you are using
+{% block hero_subtitle %}For all your <b>domains and brands</b><br>Use <b>VPN</b> before run it, if you are using
 <b>LAN</b><br>or<br>Use a different network(Your mobile hotspot or different network)<br>If you are using any
 domain(<b>"smtp.gmail.com", "smtp.office365.com", "smtp.mail.yahoo.com"</b>)<br>you don't need any vpn or different
 network
@@ -281,41 +281,43 @@ that gonna run without, you can directly use the company <b>LAN</b>{% endblock %
             const form = event.target;
             const formData = new FormData(form);
 
-            try {
-                const response = await fetch(form.action, {
-                    method: form.method,
-                    body: formData
-                });
-
-                let responseText = await response.text();
-
-                if (!response.ok) {
-                    try {
-                        const errorJson = JSON.parse(responseText);
-                        resultsOutput.textContent = `Error ${response.status}: ${errorJson.detail || responseText}`;
-                        showAlert('Error sending emails. Please check your settings.', 'danger');
-                    } catch (e) {
-                        resultsOutput.textContent = `Error ${response.status}: ${responseText}`;
-                        showAlert('Error sending emails. Please check your settings.', 'danger');
-                    }
-                    console.error('Server error:', responseText);
-                    return;
-                }
-
-                const result = JSON.parse(responseText);
-                resultsOutput.textContent = JSON.stringify(result, null, 2);
-                showAlert('Emails sent successfully!', 'success');
-            } catch (error) {
-                console.error('Fetch error:', error);
-                resultsOutput.textContent = `An error occurred: ${error.message}`;
-                showAlert('Network error. Please try again later.', 'danger');
-            } finally {
-                // Hide loading spinner
+            function finish() {
                 loadingSpinner.style.display = 'none';
+                iceReachJob.clearProgress(loadingSpinner);
                 outputContainer.style.display = 'block';
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="bi bi-send"></i> Send Emails';
             }
+
+            iceReachJob.startAndPoll(form.action, form.method, formData, {
+                onProgress: (job) => iceReachJob.renderProgress(loadingSpinner, job),
+                onDone: (job) => {
+                    const jobId = job.id;
+                    const result = job.result || {};
+                    resultsOutput.textContent = JSON.stringify(result.summary || result, null, 2);
+
+                    // Offer downloads for any generated artifacts (replace any prior links)
+                    const existing = document.getElementById('dlLinks');
+                    if (existing) existing.remove();
+                    let links = '';
+                    (job.downloads || []).forEach((key) => {
+                        const label = key === 'feedback' ? 'Download per-recipient feedback CSV'
+                            : key === 'remaining' ? 'Download remaining (unsent) rows'
+                                : `Download ${key}`;
+                        links += `<a href="/jobs/${jobId}/download/${key}" class="btn btn-outline-primary btn-sm me-2 mt-2"><i class="bi bi-download"></i> ${label}</a>`;
+                    });
+                    if (links) {
+                        resultsOutput.insertAdjacentHTML('afterend', `<div class="mt-2" id="dlLinks">${links}</div>`);
+                    }
+                    showAlert('Emails sent successfully!', 'success');
+                    finish();
+                },
+                onError: (msg) => {
+                    resultsOutput.textContent = msg;
+                    showAlert('Error sending emails. Please check your settings.', 'danger');
+                    finish();
+                }
+            });
         });
     });
 </script>

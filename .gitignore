@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+
+# iceReach generated artifacts & job state
+generated_files/
+*_checkpoint.txt
+email_feedback_*.csv
+filtered_*.csv
+*_updateAfterDel*
+*_authors_with_emails.csv
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

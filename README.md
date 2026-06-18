@@ -1,6 +1,6 @@
-# Web Scraper + Author Outreach — Automated Mailing Toolkit
+# iceReach — Author Discovery & Outreach Toolkit
 
-**One-line:** A practical, production-oriented toolkit to discover authors from biomedical literature (via NCBI/PubMed), extract contact details, validate email deliverability, and send personalized, templated outreach at scale — with both a FastAPI web UI and standalone CLI scripts.
+**One-line:** iceReach is a practical toolkit to discover authors from biomedical literature (via NCBI/PubMed), extract their contact details, validate email deliverability, and send personalized, templated outreach at scale — through a FastAPI web UI or standalone CLI scripts.
 
 ---
 
@@ -11,350 +11,271 @@
 * [Repository layout](#repository-layout)
 * [Installation](#installation)
 * [Configuration (`.env`)](#configuration-env)
+* [Running the app](#running-the-app)
 * [How it works (high level)](#how-it-works-high-level)
-* [Usage — quick start](#usage--quick-start)
-
-  * [1) FastAPI (Web UI)](#1-fastapi-web-ui)
-  * [2) Scrape authors (CLI)](#2-scrape-authors-cli)
-  * [3) Validate / filter emails (CLI or UI)](#3-validate--filter-emails-cli-or-ui)
-  * [4) Send emails (CLI or UI)](#4-send-emails-cli-or-ui)
+* [Web UI & API endpoints](#web-ui--api-endpoints)
 * [CSV format & templates](#csv-format--templates)
-* [Web UI endpoints (FastAPI)](#web-ui-endpoints-fastapi)
+* [CLI scripts](#cli-scripts)
 * [Operational notes & best practices](#operational-notes--best-practices)
 * [Troubleshooting](#troubleshooting)
-* [Extending / contribution guide](#extending--contribution-guide)
-* [License & attribution](#license--attribution)
+* [Known limitations & roadmap](#known-limitations--roadmap)
+* [Security & privacy](#security--privacy)
+* [License](#license)
 
 ---
 
 ## Highlights
 
-* **API-first scraping**: Uses NCBI Entrez (PubMed) APIs to locate articles and extract author information (no brittle HTML scraping).
-* **Two interfaces**: FastAPI web UI for interactive workflows and standalone CLI scripts for automation/cron jobs.
-* **Email validation pipeline**: Syntax checks → MX lookups → optional SMTP-level verification to reduce bounces.
-* **Templated personalization**: HTML email templates with Python-style placeholders (`{name}`, `{article_title}`, `{journal}`) for safe, repeatable personalization.
-* **CSV-centric**: All inputs/outputs are CSV files for easy integration with spreadsheets, databases, or downstream tooling.
+* **API-first scraping** — uses NCBI Entrez (PubMed) APIs to locate articles and extract author information (no brittle HTML scraping).
+* **Three tools, one app** — Scraper, Filter, and Sender, available both in a FastAPI web UI and as standalone CLI scripts.
+* **Email validation pipeline** — syntax → DNS MX lookup → (filter only) SMTP-level probe to reduce bounces.
+* **Templated personalization** — HTML email templates with `{placeholder}` substitution drawn from **any column** in your CSV. Missing/typo'd placeholders are left intact instead of crashing the run.
+* **Multiple templates & subjects** — upload several HTML templates and several subjects; each recipient gets a random pick (useful for reducing spam-filter fingerprinting).
+* **Resumable filtering** — large filter jobs checkpoint progress and can resume after interruption.
+* **CSV-centric** — all inputs/outputs are CSV (Excel `.xlsx/.xls` accepted as input) for easy integration with spreadsheets and downstream tooling.
 
 ---
 
 ## Tech stack & requirements
 
-* **Language:** Python 3.8+
-* **Web:** FastAPI + Jinja2 templates + uvicorn
+* **Language:** Python **3.12+**
+* **Web:** FastAPI + Jinja2 + uvicorn
+* **Data:** pandas + openpyxl (CSV/Excel parsing)
 * **Networking / mail:** requests, smtplib, dnspython
-* **Validation / models:** pydantic
-* **Other:** python-dotenv, python-multipart
+* **Validation / models:** pydantic (with the `email` extra)
+* **Other:** python-dotenv, python-multipart, psutil
 
-Install with:
-
-```bash
-pip install -r requirements.txt
-```
-
-`requirements.txt` contains the full list used by this project (e.g. `fastapi`, `uvicorn`, `jinja2`, `requests`, `dnspython`, `pydantic`, `python-dotenv`).
+Dependencies are declared in both `pyproject.toml` and `requirements.txt` (kept in sync).
 
 ---
 
-## Repository layout (important files)
+## Repository layout
 
-* `app.py` — FastAPI application that provides the web UI and API endpoints.
-* `automateEmailing.py` — CLI script that loads a CSV + HTML template and performs bulk sending with validation and logging.
-* `emailFilter.py` — Standalone utility to validate and filter emails (syntax, MX, optional SMTP verification).
-* `for_automate_authentic_email_google_yahoo_office.py` — Provider-specific helper / variant for sending via common providers (prompts for credentials / app passwords).
-* `scrapName.py` — Command-line tool that queries PubMed/Entrez (NCBI) for a search term and extracts author names, affiliations and email addresses.
-* `templates/` — Jinja2 HTML templates used by the web UI **and** example email templates used by the mailing scripts.
-* `.env` — Environment file (NOT committed in normal workflows). Used for API keys and SMTP credentials.
-* `requirements.txt` — Python dependencies.
-* `try.csv`, `try_results.csv` — Example input/output CSVs to test functionality.
+```
+.
+├── app.py                  # FastAPI application — web UI + API (the main app)
+├── jobs.py                 # In-memory background-job manager (status/progress/artifacts)
+├── run.py                  # Launcher: finds a free port, starts uvicorn, opens the browser
+├── runServer.bat           # Windows convenience launcher
+├── pyproject.toml          # Project metadata + dependencies
+├── requirements.txt        # Dependencies (mirror of pyproject.toml)
+├── templates/              # Jinja2 UI templates (universalLayout, upload_form, email_filter, email_scraper)
+├── newSampleTemplates/     # Example HTML email templates
+├── fancyMails/             # More example HTML email templates
+└── CLI_files/              # Standalone command-line variants (legacy / automation)
+    ├── scrapName.py        # PubMed author/email scraper (CLI)
+    ├── emailFilter.py      # Email validation/filter (CLI)
+    ├── automateEmailing.py # Bulk sender with validation + logging (CLI)
+    └── for_automate_authentic_email_google_yahoo_office.py  # Provider-specific sender variant
+```
+
+> **Note:** The CLI scripts in `CLI_files/` overlap with `app.py` and are kept for automation/cron use. The FastAPI app (`app.py`) is the primary, maintained interface.
 
 ---
 
 ## Installation
 
-1. Clone the repository:
+Using [uv](https://docs.astral.sh/uv/) (recommended):
 
 ```bash
+# clone
 git clone <repo-url>
-cd web-scraping-info-of-authors-though-API-to-automate-the-mailing-main
+cd web-scraping-info-of-authors-though-API-to-automate-the-mailing
+
+# create & activate a virtual environment
+uv venv
+source .venv/bin/activate        # macOS / Linux
+# .venv\Scripts\activate         # Windows
+
+# install dependencies
+uv pip install -r requirements.txt
+# or, from the project file:  uv pip install -e .
 ```
-
-2. Create & activate a virtual environment:
-
-```bash
-python -m venv venv
-# macOS / Linux
-source venv/bin/activate
-# Windows (cmd)
-venv/Scripts/activate
-```
-
-3. Install requirements:
-
-```bash
-pip install -r requirements.txt
-```
-
-4. Create a `.env` file at the repo root (see next section for recommended keys).
 
 ---
 
 ## Configuration (`.env`)
 
-Create a `.env` file with the credentials and keys your workflow requires. **Never** commit `.env` to source control.
-
-Example `.env` entries (adapt to your SMTP provider & API keys):
+A `.env` file is **optional** — when you use the web UI you enter SMTP credentials directly in the form, so no `.env` is required. It is mainly useful for the CLI scripts or for an NCBI API key.
 
 ```ini
-# NCBI / PubMed (for scrapName.py)
+# NCBI / PubMed — raises Entrez rate limits (optional)
 NCBI_API_KEY=your_ncbi_api_key_here
 
-# SMTP / sending credentials (used by CLI scripts or the web UI)
+# SMTP / sending credentials (used by CLI scripts)
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_USER=your-sending@example.com
 SMTP_PASS=your_smtp_password_or_app_password
-
-# Optional: From display name used in emails
 FROM_NAME=Your Name or Organization
 ```
 
-> Note: Gmail/Outlook/Yahoo often require an **app password** or OAuth flow. Using your regular account password may be blocked or result in authentication errors. Provider-specific helper scripts are included (`for_automate_authentic_email_google_yahoo_office.py`) but using app passwords and dedicated sending accounts is strongly recommended.
+> Gmail/Outlook/Yahoo generally require an **app password** (or OAuth). A regular account password will usually be rejected. **Never commit `.env`.**
+
+---
+
+## Running the app
+
+Easiest — the launcher picks a free port and opens your browser:
+
+```bash
+python run.py
+```
+
+Or run uvicorn directly:
+
+```bash
+uvicorn app:app --reload
+# pick another port if 8000 is busy:
+uvicorn app:app --reload --port 8002
+```
+
+Then open **http://127.0.0.1:8000/** (or the port shown in the console).
+
+On Windows you can also double-click `runServer.bat`.
 
 ---
 
 ## How it works (high level)
 
-1. **Discovery** — `scrapName.py` queries PubMed (Entrez) for a search term, parses returned XML for article metadata and author blocks, and extracts email addresses via regex from author/affiliation text.
-2. **Validation** — `emailFilter.py` performs a three-phase validation (syntax → DNS MX lookup → SMTP probe) to reduce invalid addresses.
-3. **Delivery** — `automateEmailing.py` and the FastAPI app read a CSV + HTML template, personalize each message, and send in batches with configurable delays. Results are written to a results CSV for auditing.
+1. **Discover** — the Scraper queries PubMed (Entrez `esearch` → `efetch`), parses the returned XML for article metadata and author blocks, and extracts emails from affiliation text via regex. Results are de-duplicated and exported to CSV.
+2. **Validate** — the Filter checks each address: syntax → DNS MX record → live SMTP `RCPT` probe, and writes only deliverable rows to a filtered CSV. Progress is checkpointed so large files can resume.
+3. **Send** — the Sender reads a CSV + one or more HTML templates, validates each address (syntax + MX), personalizes the message, and sends via SMTP with a configurable delay between rows. It returns a summary plus a per-recipient feedback CSV.
 
 ---
 
-## Usage — quick start
+## Web UI & API endpoints
 
+| Page (GET) | Purpose |
+|---|---|
+| `GET /` | Email Sender form |
+| `GET /email-filter` | Email Filter form |
+| `GET /email-scraper` | Email Scraper form |
 
-## 1) FastAPI (Web UI)
-****
+All three heavy operations run as **background jobs**. The POST returns `202 Accepted`
+with a `job_id` immediately; the client polls for progress and fetches artifacts when done.
 
-Start the app and use the browser-based interface to upload CSVs and templates, preview personalized messages, and send in controlled batches.
-And if you are using this then you don't have to set a .env file.
+| API (POST) | Purpose |
+|---|---|
+| `POST /email-sender/send` | Upload CSV + HTML template(s) and send personalized emails. Starts a job. |
+| `POST /email-filter/process` | Upload a CSV/Excel of emails and filter to deliverable addresses. Starts a job. Supports `resume`. |
+| `POST /email-scraper/scrape` | Provide a search term; scrapes authors+emails from PubMed (last 5 years). Starts a job. |
 
-### Running the Application
+| Job API (GET) | Purpose |
+|---|---|
+| `GET /jobs/{id}` | Job status: `{status, progress, message, result, error, downloads}`. Poll until `status` is `done` or `error`. |
+| `GET /jobs/{id}/download/{key}` | Download a generated artifact. Keys: `feedback` & `remaining` (sender), `result` (filter/scraper). |
 
-```bash
-uvicorn app:app --reload
-```
-```bash
-# if you think your default port is busy the use:
-uvicorn app:app --reload --port 8002 # you can use any port inbetween 8000 to 8005 recommended
-```
+The web UI does this polling for you and shows a live progress bar. Job state is
+in-memory and expires after ~6 hours (artifacts are cleaned up with it).
 
-Then open: **[http://127.0.0.1:8000/](http://127.0.0.1:8000/)**
-
-
-### app (Auto Mail App) – Email Tools Application for Pulsus
-
-app (Auto Mail App) is a **FastAPI-based application** designed to simplify email-related workflows for research communication and outreach. It provides a **web interface and APIs** to:
-
-* 📤 Send personalized emails in bulk from CSV + HTML templates.
-* 🔍 Scrape author contact details from **PubMed**.
-* 🛠️ Filter and validate email addresses for deliverability.
-
-This tool is built to automate mailing for journals, publishers, and research organizations.
+> These endpoints have **no authentication** — intended for local use or behind an authenticated proxy, not direct public exposure.
 
 ---
 
-### Features
-
-* **Email Sender**
-
-  * Upload a CSV file of authors.
-  * Use an HTML email template with placeholders (`{name}`, `{journal}`, `{article_title}`).
-  * Configurable SMTP server (Gmail, Outlook, Yahoo, Universal, Custom).
-  * Supports sending limits and delays between messages.
-  * Provides a full summary (success, failed, validation breakdown).
-
-* **Email Filter**
-
-  * Upload CSV with email addresses.
-  * Validates syntax, MX records, and SMTP acceptance.
-  * Generates a **filtered CSV** with only deliverable emails.
-  * Supports resuming from last checkpoint for large files.
-
-* **Email Scraper**
-
-  * Scrapes author emails from **PubMed articles (last 5 years)**.
-  * Extracts names, affiliations, journals, article titles, and emails.
-  * Removes duplicates and ensures unique results.
-  * Exports author details into a structured CSV.
-
----
-
-
----
-
-### API Endpoints
-
-### 1. **Email Sender**
-
-* `POST /email-sender/send`
-  Upload CSV + HTML template and send personalized emails.
-
-### 2. **Email Filter**
-
-* `POST /email-filter/process`
-  Upload CSV of emails and filter out invalid/non-deliverable ones.
-
-### 3. **Email Scraper**
-
-* `POST /email-scraper/scrape`
-  Provide a **search term** and fetch authors’ emails from PubMed.
-
----
-
-### CSV Format Requirements
-
-### For Email Sending:
-
-```csv
-name,emails,journal,article_title
-John Doe,john@example.com,Journal of AI,Deep Learning in Practice
-Jane Roe,jane@university.edu,Medical Journal,AI in Healthcare
-```
-
-* **name** → Author name
-* **emails** → Single or multiple emails (semicolon `;` separated)
-* **journal** → Journal name
-* **article\_title** → Article title
-
----
-
-### Example Workflow
-
-1. Scrape author emails from PubMed with a keyword (e.g., "machine learning").
-2. Filter the extracted CSV to keep only **deliverable** emails.
-3. Send personalized emails using an HTML template.
-
-
-
-## 2) Scrape authors (CLI)
-
-```bash
-python scrapName.py "machine learning in cardiology"
-```
-
-* Output: `<search_term>_authors_with_emails.csv` with columns such as `name`, `journal`, `article_title`, `emails`, `affiliations`.
-* Notes: The script uses NCBI Entrez `esearch`/`efetch`. If you have a `NCBI_API_KEY` in `.env` the script will use it to increase rate limits.
-
-## 3) Validate / filter emails (CLI or UI)
-
-**CLI:**
-
-```bash
-python emailFilter.py
-# It will prompt for the input CSV path and produce a filtered output CSV (e.g. input_filtered.csv)
-```
-
-**UI:** Start the FastAPI UI (below) and go to the **Email Filter** page to upload CSVs and run validations.
-
-## 4) Send emails (CLI or UI)
-
-**CLI (example)**
-
-```bash
-python automateEmailing.py
-```
-
-`automateEmailing.py` will prompt for parameters (subject, template file, SMTP credentials if not provided in `.env`, etc.) and will create a `<input>_results.csv` containing per-recipient status and messages.
-
----
 ## CSV format & templates
 
-### Required CSV columns (recommended)
+### Sender CSV — required columns
 
-The web UI and the scripts expect CSVs with at least the following columns (case-insensitive):
+| Column | Required | Used for |
+|---|---|---|
+| `name` | ✅ | recipient display name + `{name}` placeholder |
+| `emails` | ✅ | one or more addresses, **semicolon-separated** (`a@x.com;b@y.com`) |
+| *(any other column)* | optional | available as `{column_name}` in the template/subject |
 
-* `name` — recipient name (used to personalize `Dear {name}`)
-* `emails` — one or more emails for the author (can be a single email or a delimited string)
-* `journal` — article journal (used for context in personalization)
-* `article_title` — article title (used in personalization)
+The Sender substitutes `{column}` placeholders from **any** column present in the row — both in the HTML body and in the subject line. A placeholder with no matching column is left as-is (it won't crash the job).
 
-> The repo includes `try.csv` as an example. `scrapName.py` produces files with a compatible format.
+### Filter CSV — required columns
 
-### Email template format
+Only an **`emails`** column is required (one address per row).
 
-* Use an **HTML** file for richer formatting.
-* Placeholders use Python \[`str.format()`] style: `{name}`, `{article_title}`, `{journal}`. Example:
+### Email template
 
 ```html
 <p>Dear Dr. {name},</p>
-<p>I am writing about your paper titled "{article_title}" published in {journal}...</p>
+<p>I enjoyed your paper "{article_title}" in {journal}. ...</p>
 ```
 
-* The FastAPI UI accepts uploaded templates (or uses templates in `/templates/`). The mailing scripts call `template.format(...)` to substitute values before sending.
+Example templates live in `newSampleTemplates/` and `fancyMails/`.
+
+### Example end-to-end workflow
+
+1. **Scrape** authors from PubMed for a keyword (e.g. "machine learning in cardiology").
+2. **Filter** the resulting CSV to keep only deliverable addresses.
+3. **Send** personalized emails using an HTML template.
 
 ---
 
-## Web UI endpoints (FastAPI)
+## CLI scripts
 
-The FastAPI app exposes these key routes (see `app.py`):
+Run from the repo root (so the `templates/` path resolves):
 
-* `GET /` — Landing / dashboard page.
-* `GET /email-filter` — Upload CSV & run validation.
-* `GET /email-scraper` — Simple interface to run `scrapName`-style searches from the browser.
-* `POST /email-sender/send` — Send emails using uploaded CSV + template (invoked by the UI form).
-* `POST /email-filter/process` — Process an uploaded CSV and return filtered results.
-* `POST /email-scraper/scrape` — Trigger a PubMed search and download results.
+```bash
+# 1) Scrape authors → <search_term>_authors_with_emails.csv
+python CLI_files/scrapName.py "machine learning in cardiology"
 
-These endpoints are intended for local use or behind an authenticated proxy — they are **not** hardened for public exposure without authentication.
+# 2) Validate / filter emails (prompts for the input CSV path)
+python CLI_files/emailFilter.py
+
+# 3) Bulk send (prompts for subject, template, SMTP credentials, etc.)
+python CLI_files/automateEmailing.py
+```
 
 ---
 
 ## Operational notes & best practices
 
-* **Use a dedicated sending account or transactional provider.** Mass outreach with consumer mailboxes frequently triggers throttling and account suspension.
-* **App passwords / OAuth:** For Gmail/Outlook, prefer app passwords or OAuth tokens. Manage credentials carefully.
-* **Rate limits:** Respect provider rate limits — use the `delay` parameter between sends and limit `max_emails` in a batch.
-* **Unsubscribe & compliance:** Include unsubscribe instructions and abide by anti-spam laws (CAN-SPAM, GDPR consent rules where applicable).
-* **IP reputation & deliverability:** If you plan to send large volumes, use a proper ESP, warmed-up IPs, DKIM/SPF, and monitoring for bounces and complaints.
-* **Backups / logging:** Results CSVs are important for auditing. Keep copies and rotate logs.
+* **Use a dedicated sending account or a transactional provider** (SES, SendGrid, Mailgun). Mass outreach from consumer mailboxes frequently triggers throttling or suspension.
+* **App passwords / OAuth** for Gmail/Outlook/Yahoo — regular passwords are usually blocked.
+* **Respect rate limits** — use the `delay` between sends and a sane `max_emails` per batch.
+* **Compliance** — include unsubscribe instructions and follow anti-spam law (CAN-SPAM, GDPR consent where applicable).
+* **Deliverability** — set up SPF/DKIM/DMARC on your sending domain; validate addresses (the Filter) before large sends.
+* **Keep the feedback/results CSVs** for auditing.
 
 ---
 
-## Troubleshooting — common issues
+## Troubleshooting
 
-* **`smtplib.SMTPAuthenticationError` / 535** — Wrong credentials or provider blocks. Try app passwords or provider-specific settings (e.g., `Allow less secure apps` is no longer supported by many providers).
-* **MX lookup failures (dns.resolver.NXDOMAIN)** — Domain misspelled or DNS issues. Check the domain in the CSV.
-* **`ConnectionRefusedError` / blocked ports** — Some networks block SMTP ports (25/465/587). Try an alternate port or run from a different network.
-* **NCBI / Entrez rate limits** — If you plan many queries, set `NCBI_API_KEY` to raise your request quota.
-* **High bounce rates** — Reduce sending volume, validate addresses first, and use a trusted sending domain.
+* **`SMTPAuthenticationError` / 535** — wrong credentials or provider block; use an app password.
+* **MX lookup failures (`NXDOMAIN`)** — misspelled domain or DNS issue; check the address.
+* **`ConnectionRefusedError` / blocked ports** — some networks block SMTP (25/465/587). Try another port or network (the UI hints at using a VPN / hotspot on restrictive LANs).
+* **NCBI / Entrez rate limits** — set `NCBI_API_KEY` to raise your quota.
+* **High bounce rates** — filter first, lower volume, and send from a trusted domain.
 
 ---
 
-## Extending / contribution guide
+## Performance & architecture
 
-* Add provider-specific transports (Amazon SES, SendGrid, Mailgun) to improve deliverability and remove SMTP-based fragility.
-* Add OAuth2 for common providers to avoid storing plain-text passwords.
-* Dockerize the app for consistent deployment: a `Dockerfile` and `docker-compose.yml` would be ideal additions.
-* Add a small database (SQLite or Postgres) for persistent job tracking, recipient state, and retries.
+Recent work addressed the main throughput/scale bottlenecks:
 
-If you want, I can scaffold a Dockerfile + compose, add SES integration, or change the web UI to require authentication.
+* **Background jobs** — send/filter/scrape run off the event loop in a worker thread. The server stays responsive (sub-millisecond) while a long job runs, and jobs are no longer bound by HTTP request timeouts. Clients poll `GET /jobs/{id}` for live progress.
+* **SMTP connection reuse** — one authenticated SMTP connection is opened per send batch and reused across recipients (with transparent reconnect on drop), instead of reconnecting per email. Auth failures surface immediately, before the file is processed.
+* **Per-domain DNS/MX caching** — a single shared resolver is used and MX results are memoized per domain (negatives included), so a list of thousands sharing a handful of domains resolves each domain once.
+* **NCBI API key + rate limiting** — set `NCBI_API_KEY` to raise the Entrez limit to 10 req/s (3/s without). Requests are throttled to stay within the limit.
+* **Managed output dir** — generated artifacts go to `generated_files/` and expire (~6h) along with their job records.
+
+### Remaining / possible future work
+
+* **SMTP `RCPT` probing (filter)** is inherently unreliable — many providers accept-all or block probes, and probing can harm sender reputation. Treat negatives as advisory.
+* **In-memory job state** does not survive a process restart (e.g. `--reload`). For multi-process or durable needs, move to a real task queue (Celery/RQ/arq) + shared store.
+* **No authentication** on the web endpoints.
+* Possible additions: ESP transports (SES/SendGrid), OAuth2 for providers, a Dockerfile, and a DB for persistent job tracking and retries.
 
 ---
 
 ## Security & privacy
 
-* Do **not** commit `.env` or any credentials to the repository.
-* Treat scraped personal contact data responsibly. Follow institutional and legal rules for outreach and data privacy.
+* Never commit `.env` or any credentials.
+* Treat scraped personal contact data responsibly and follow institutional and legal rules for outreach and data privacy.
 
 ---
 
 ## License
 
-This repository is shared under the **MIT License** (feel free to update to a different license if required).
+Shared under the **MIT License**.
 
 ---
 
 ## Maintainer
 
-Prepared for: **Arupa Nanda Swain** — please review and tell me if you want the README tuned for a specific audience (developers vs non-technical users) or want additional docs (API reference, architecture diagram, Dockerfile).
+Prepared for **Arupa Nanda Swain**.

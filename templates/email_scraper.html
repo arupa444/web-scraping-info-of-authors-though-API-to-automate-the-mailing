@@ -1,6 +1,6 @@
 {% extends "universalLayout.html" %}
 {% block head %}
-<title>Email Scraper - Pulsus</title>
+<title>iceReach — Email Scraper</title>
 {% endblock %}
 {% block hero_title %}<i class="bi bi-search"></i> Email Scraper{% endblock %}
 {% block hero_subtitle %}Scrape author emails from PubMed based on search terms{% endblock %}
@@ -123,72 +123,34 @@
             const form = event.target;
             const formData = new FormData(form);
 
-            try {
-                // Simulate progress updates (in a real app, you'd get this from the server)
-                const progressInterval = setInterval(() => {
-                    const currentWidth = parseInt(progressBar.style.width);
-                    if (currentWidth < 90) {
-                        updateProgress(currentWidth + 10, `Processing... ${currentWidth + 10}%`);
-                    }
-                }, 2000);
-
-                const response = await fetch(form.action, {
-                    method: form.method,
-                    body: formData
-                });
-
-                clearInterval(progressInterval);
-                updateProgress(100, 'Complete!');
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    resultsOutput.innerHTML = `<div class="alert alert-danger">Error ${response.status}: ${errorText}</div>`;
-                    showAlert('Error scraping emails. Please try again.', 'danger');
-                    return;
-                }
-
-                // Get the filename from the response headers
-                const contentDisposition = response.headers.get('Content-Disposition');
-                let filename = 'scraped_authors.csv';
-                if (contentDisposition) {
-                    const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-                    if (filenameMatch.length === 2) {
-                        filename = filenameMatch[1];
-                    }
-                }
-
-                // Create a blob from the response
-                const blob = await response.blob();
-
-                // Create a download link
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-
-                // Clean up
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-
-                showAlert('Email scraping completed successfully!', 'success');
-                resultsOutput.innerHTML = `
-                    <div class="alert alert-success">
-                        <i class="bi bi-check-circle"></i> Your scraped data has been downloaded as a CSV file.
-                    </div>
-                `;
-            } catch (error) {
-                console.error('Fetch error:', error);
-                resultsOutput.innerHTML = `<div class="alert alert-danger">An error occurred: ${error.message}</div>`;
-                showAlert('Network error. Please try again later.', 'danger');
-            } finally {
-                // Hide loading spinner
+            function finish() {
                 loadingSpinner.style.display = 'none';
                 outputContainer.style.display = 'block';
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="bi bi-search"></i> Scrape Emails';
             }
+
+            iceReachJob.startAndPoll(form.action, form.method, formData, {
+                onProgress: (job) => updateProgress(Math.round(job.progress || 0), job.message || 'Processing...'),
+                onDone: (job) => {
+                    updateProgress(100, 'Complete!');
+                    iceReachJob.download(job.id, 'result');
+                    const result = job.result || {};
+                    showAlert('Email scraping completed successfully!', 'success');
+                    resultsOutput.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle"></i> ${result.success_message || 'Your scraped data has been downloaded as a CSV file.'}
+                        </div>
+                        <a href="/jobs/${job.id}/download/result" class="btn btn-outline-primary btn-sm mt-2"><i class="bi bi-download"></i> Download again</a>
+                    `;
+                    finish();
+                },
+                onError: (msg) => {
+                    resultsOutput.innerHTML = `<div class="alert alert-danger">${msg}</div>`;
+                    showAlert('Error scraping emails. Please try again.', 'danger');
+                    finish();
+                }
+            });
         });
     });
 </script>
