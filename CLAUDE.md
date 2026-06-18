@@ -2,91 +2,94 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## What this is
+
+iceReach is a multi-tenant, AI-assisted email **platform**: a FastAPI JSON API
+(`backend/icereach/`) + a React SPA (`frontend/`). It was rebuilt from a legacy
+single-file app; the old `app.py`, `templates/`, `CLI_files/`, and the **email
+scraper are removed** — do not reintroduce scraping (guarded by
+`backend/tests/test_no_scraper.py`).
+
+Authoritative design: `docs/superpowers/specs/2026-06-19-icereach-platform-design.md`
+(all 6 phases). Phase 1 plan: `docs/superpowers/plans/2026-06-19-icereach-phase1-foundation.md`.
+Only Phase 1 is built so far.
+
 ## Commands
 
 ```bash
-# Install deps (uv; see global instruction — never use pip directly)
-uv venv && source .venv/bin/activate
-uv pip install -r requirements.txt        # requirements.txt and pyproject.toml are kept in sync
+# Python deps (uv; never pip directly). pytest is configured via pyproject (pythonpath=backend).
+uv venv && source .venv/bin/activate && uv pip install -r requirements.txt
+pytest backend/tests -q                  # full backend suite
+pytest backend/tests/test_send_pipeline.py -q   # a single file
 
-# Run the app (launcher finds a free port 8000-8100 and opens the browser)
-python run.py
-# or directly:
-uvicorn app:app --reload --port 8002
+# Run API (note --app-dir backend so `icereach` is importable)
+uvicorn icereach.main:app --reload --app-dir backend --port 8000
+python run.py                            # free port + browser; serves built SPA if frontend/dist exists
+python -m icereach.services.queue        # background worker (run with PYTHONPATH=backend)
+
+# Migrations
+DATABASE_URL=sqlite:///./icereach.db alembic -c backend/alembic.ini upgrade head
+
+# Frontend
+cd frontend && npm install && npm run dev   # Vite dev server, proxies /api -> :8000
+cd frontend && npm run build                # production build -> frontend/dist
 ```
 
-There is **no test suite or linter configured**. The code was verified ad hoc with
-`fastapi.testclient.TestClient` and live `curl` against a running server. When verifying
-changes, stub the network (`app.validate_email`, `app.validate_email_filter`,
-`app.SmtpSession`) to avoid real DNS/SMTP, then drive the endpoints through the job
-lifecycle below.
+## Architecture (the non-obvious parts)
 
-## Architecture
+**Tenant isolation is structural.** Every domain table carries `workspace_id`
+(`models/base.py:WorkspaceScopedMixin`). Routers depend on
+`security/deps.py:auth_context` → `AuthContext{user, workspace, membership}` and
+**must** filter every query by `ctx.workspace.id`. Never trust an id from the path
+without the workspace filter (see the `_owned()` helpers in routers).
 
-iceReach is a single-file FastAPI app ([app.py](app.py)) exposing three tools — **Sender**,
-**Filter**, **Scraper** — each as a web page + API. Requires Python 3.12+.
+**Auth = httpOnly session cookie + double-submit CSRF.** `security/sessions.py`
+stores only the SHA-256 of the session token. The CSRF token is a signed cookie
+(`ice_csrf`, readable by JS) that the SPA echoes as `X-CSRF-Token`. The CSRF check
+is a middleware in `main.py` that fires for mutating `/api/*` requests **except**
+login/signup and any request bearing an `Authorization: Bearer` API key. Tests must
+send the `X-CSRF-Token` header on POST/PATCH/DELETE.
 
-### Background-job model (the central pattern — read this first)
+**Long work runs through the DB-backed queue, not in-request.** `services/queue.py`:
+`enqueue()` inserts a `Job`; `claim_next()` atomically claims one (optimistic
+update — no double-claim); handlers register via `@register("type")` and receive
+`(db, job, progress_cb)`; failures retry with backoff then dead-letter. Handlers:
+`sender.send_campaign`, `importer.run_import_job`, `dsn.poll_dsn`. The worker
+(`run_worker`) is a separate process. Endpoints return `{job_id}`; the SPA polls
+`GET /api/jobs/{id}`.
 
-The three heavy operations do **not** run in the request cycle. Each POST endpoint
-(`/email-sender/send`, `/email-filter/process`, `/email-scraper/scrape`) is thin: it does
-fast synchronous validation, saves any upload to a temp file, then calls
-`schedule_job(...)` and returns `202 {job_id, status_url}` immediately.
+**Sending pipeline** (`services/sender.py`, registered as `send_campaign`):
+resolve audience (list or segment) → drop suppressed → per recipient: create a
+`Message` first (its id seeds tracking tokens), render `{merge}` tags
+(`services/merge.py`), rewrite links + inject open pixel (`services/tracking.py`),
+build a multipart message with `List-Unsubscribe` (`services/smtp.py`), DKIM-sign
+if the domain is verified (`services/dkim.py`), send over one reused `SmtpSession`.
+**Idempotent**: one `Message` per `(campaign, contact)`, so re-running resumes.
 
-- `schedule_job` → `asyncio.create_task(_launch(...))` → `await run_in_threadpool(fn, ...)`.
-  The job functions (`_run_send_job`, `_run_filter_job`, `_run_scrape_job`) are **blocking
-  and run in a worker thread**, keeping the event loop responsive.
-- [jobs.py](jobs.py) `JobManager` is the in-memory registry (thread-safe via a lock). Jobs
-  carry `status / progress / message / result / files / error`. Artifacts are written to
-  `generated_files/` and attached with `attach_file(job_id, key, path)`.
-- Clients poll `GET /jobs/{id}` (returns `public_view` — hides server paths) and fetch
-  results via `GET /jobs/{id}/download/{key}`. Download keys: `feedback` & `remaining`
-  (sender), `result` (filter/scraper). Friendly download names come from
-  `result["download_names"]`.
-- Worker code reports progress through a `progress_cb(percent, message)` made by
-  `make_progress_callback`; the core processing functions accept this callback.
+**Deliverability honesty (important).** Over SMTP, `delivered` and `complaint`
+cannot be truthfully sourced — `services/analytics.py:campaign_metrics` returns
+them as `None` and the UI shows `—` until ESP webhooks (Phase 4). Bounces come from
+the **DSN poller** (`services/dsn.py`), which maps a bounce back to its `Message`
+via the original `Message-ID` embedded in the report (tenant-safe), sets
+hard/soft-bounce status, and auto-suppresses hard bounces.
 
-**Consequences when editing:** job state is in-memory and single-process — it is wiped by
-`--reload` and not shared across workers. `JobManager.cleanup_old()` (called on each launch)
-drops jobs/files older than `retention_seconds` (6h).
+**AI** (`ai/service.py`) wraps `google-genai` pinned to `gemini-3-flash-preview`.
+Every capability raises `AIDisabled` (→ HTTP 503) when `GEMINI_API_KEY` is unset —
+keep this graceful-degradation contract.
 
-### Frontend (Jinja + vanilla JS polling)
+**Segments** (`services/segments.py`) compile a JSON rule DSL
+(`all`/`any`/`not` + ops `eq,neq,contains,gt,lt,in,exists` over `email|name|status|
+attributes.<key>`) to SQLAlchemy filters; unknown op/field raises `ValueError`
+(routers map to 422).
 
-All pages extend [templates/universalLayout.html](templates/universalLayout.html), which
-defines `window.iceReachJob` — the shared helper that POSTs a form, expects `202 + job_id`,
-polls `/jobs/{id}` every 1.2s, drives a Bootstrap progress bar, and on completion renders
-the JSON summary (sender) or triggers an artifact download (filter/scraper). Per-page
-scripts (`upload_form.html`, `email_filter.html`, `email_scraper.html`) only supply the
-`onProgress/onDone/onError` handlers. If you change the job result shape, update both the
-job function in `app.py` and the page's handlers.
+## Conventions
 
-### Shared infrastructure in app.py
-
-- **`SmtpSession`** — one authenticated SMTP connection reused across a whole send batch
-  (transparent reconnect on drop). Opened once up front so auth/connection errors abort
-  before the file is processed. Relaxes TLS verification only for non-major providers.
-- **`resolve_mx_hosts(domain)`** — single shared DNS resolver + per-domain MX cache
-  (negatives cached too). All MX checks (`has_mx_record`, `has_mx_record_filter`,
-  `check_smtp_filter`) go through it.
-- **NCBI Entrez** — `_ncbi_url` appends `NCBI_API_KEY` (env) and `_ncbi_throttle` rate-limits
-  to 10 req/s with a key, 3/s without.
-- **`render_template(content, row)`** — the substitution engine for both email bodies and
-  subjects: `{column}` placeholders are filled from the CSV row dict; **missing/typo'd keys
-  are left intact rather than raising** (do not switch this back to `str.format`).
-
-### Data contracts
-
-- Sender CSV requires `name` + `emails`; any other column is usable as `{column}` in the
-  template/subject. Filter CSV requires only `emails`. Multiple emails are `;`-separated.
-- Filter **resume** keys its checkpoint/output off the *stable original filename*
-  (sanitized), never the random temp path — both endpoint and `process_csv_file_filter`
-  must agree on `output_base_name`/`output_dir` for resume to find prior state.
-- Scraper dedupes by email and stores author records under a collision-free key
-  (`__author__::<first email>`), never `author_name` (names collide; many fall back to
-  "Unknown Author").
-
-### CLI_files/
-
-`CLI_files/*.py` are standalone, legacy command-line variants that duplicate the app's
-logic. They are **not** maintained alongside `app.py` — prefer changing the web app. Run
-them from the repo root so their `templates/` paths resolve.
+- SQLAlchemy 2.0 style (`Mapped`/`mapped_column`, `select()`/`db.scalar(s)`).
+- New routers are auto-included by `main.py`'s dynamic loop if the module exposes
+  `router`; add the module name there if it's new.
+- Tests: `backend/tests/conftest.py` points the app at a throwaway SQLite DB
+  (set before import) and recreates the schema per test via the autouse fixture;
+  use the `db` Session fixture or `TestClient(app)`.
+- Dev `create_all` runs on startup, but **schema changes need an Alembic migration**
+  (`render_as_batch=True` is set for SQLite). The migration test asserts a clean
+  upgrade/downgrade roundtrip.

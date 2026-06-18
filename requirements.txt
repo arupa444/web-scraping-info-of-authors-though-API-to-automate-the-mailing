@@ -1,14 +1,22 @@
 fastapi>=0.110,<0.120
 uvicorn>=0.29,<0.32
-pydantic>=2.6,<2.9
+pydantic[email]>=2.6,<2.9
 pydantic-settings>=2.0,<2.4
-jinja2>=3.1,<3.3
 python-multipart>=0.0.9,<0.1.0
 requests
 dnspython
-pydantic[email]
 python-dotenv>=1.0,<1.1
 httpx>=0.27,<0.29
 psutil
 pandas
 openpyxl
+sqlalchemy>=2.0
+alembic
+argon2-cffi
+itsdangerous
+dkimpy
+google-genai
+
+# dev
+pytest
+pytest-asyncio
