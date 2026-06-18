@@ -1,0 +1,146 @@
+"""DB-backed job queue + worker.
+
+Evolves the legacy in-memory JobManager into a durable, workspace-scoped queue
+that survives restarts and supports multiple worker processes. Jobs are claimed
+atomically (optimistic update), retried with backoff, and sent to a dead-letter
+state after max attempts (with an alert hook).
+"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Callable
+from datetime import datetime, timedelta
+from typing import Any, Optional
+
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
+
+from ..db import SessionLocal
+from ..models import Job
+
+MAX_ATTEMPTS = 5
+
+# type -> handler(db, job, progress_cb)
+HANDLERS: dict[str, Callable[[Session, Job, Callable[[float, str], None]], Optional[dict]]] = {}
+# alert hooks invoked when a job is dead-lettered
+DLQ_HOOKS: list[Callable[[Job], None]] = []
+
+
+def register(job_type: str):
+    """Decorator: register a handler for a job type."""
+    def deco(fn):
+        HANDLERS[job_type] = fn
+        return fn
+    return deco
+
+
+def enqueue(db: Session, workspace_id: int, job_type: str, payload: dict[str, Any] | None = None,
+            run_after: Optional[datetime] = None) -> Job:
+    job = Job(
+        workspace_id=workspace_id,
+        type=job_type,
+        status="queued",
+        payload=payload or {},
+        run_after=run_after or datetime.utcnow(),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def claim_next(db: Session) -> Optional[Job]:
+    """Atomically claim one due, queued job. Returns None if none available."""
+    now = datetime.utcnow()
+    candidate = db.scalars(
+        select(Job).where(Job.status == "queued", Job.run_after <= now).order_by(Job.run_after).limit(1)
+    ).first()
+    if candidate is None:
+        return None
+    # Optimistic claim: only succeeds if still queued (guards against double-claim).
+    res = db.execute(
+        update(Job).where(Job.id == candidate.id, Job.status == "queued").values(status="running", progress=0)
+    )
+    db.commit()
+    if res.rowcount == 1:
+        db.refresh(candidate)
+        return candidate
+    return None  # lost the race to another worker
+
+
+def _progress_cb(db: Session, job: Job):
+    def cb(percent: float, message: str = ""):
+        job.progress = max(0, min(100, int(percent)))
+        if message:
+            job.message = message[:500]
+        db.commit()
+    return cb
+
+
+def run_job(db: Session, job: Job) -> None:
+    """Execute a claimed job through its handler, with retry/backoff and DLQ."""
+    handler = HANDLERS.get(job.type)
+    if handler is None:
+        job.status = "failed"
+        job.error = f"No handler registered for job type '{job.type}'"
+        db.commit()
+        _fire_dlq(job)
+        return
+
+    job.attempts += 1
+    db.commit()
+    try:
+        result = handler(db, job, _progress_cb(db, job))
+        job.status = "done"
+        job.progress = 100
+        job.result = result if isinstance(result, dict) else {"ok": True}
+        job.error = None
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — handlers may raise anything
+        db.rollback()
+        job = db.get(Job, job.id)
+        job.error = str(exc)
+        if job.attempts >= MAX_ATTEMPTS:
+            job.status = "failed"
+            db.commit()
+            _fire_dlq(job)
+        else:
+            backoff = min(300, 2 ** job.attempts)
+            job.status = "queued"
+            job.run_after = datetime.utcnow() + timedelta(seconds=backoff)
+            db.commit()
+
+
+def _fire_dlq(job: Job) -> None:
+    for hook in DLQ_HOOKS:
+        try:
+            hook(job)
+        except Exception:  # noqa: BLE001 — alert hooks must never break the worker
+            pass
+
+
+def run_worker(poll_interval: float = 1.0, max_idle_loops: Optional[int] = None) -> None:
+    """Worker loop: claim and run jobs until interrupted (or idle limit hit, for tests)."""
+    idle = 0
+    while True:
+        db = SessionLocal()
+        try:
+            job = claim_next(db)
+            if job is None:
+                idle += 1
+                if max_idle_loops is not None and idle >= max_idle_loops:
+                    return
+                time.sleep(poll_interval)
+                continue
+            idle = 0
+            run_job(db, job)
+        finally:
+            db.close()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    # Import handlers so they register, then run.
+    from . import sender  # noqa: F401  (registers send_campaign)
+    print("iceReach worker starting...")
+    run_worker()
