@@ -225,6 +225,7 @@ export interface DnsRecord {
 export interface SendingDomain {
   id: number;
   domain: string;
+  dkim_selector?: string;
   spf_verified?: boolean;
   dkim_verified?: boolean;
   dmarc_verified?: boolean;
