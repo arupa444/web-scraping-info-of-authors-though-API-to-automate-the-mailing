@@ -76,6 +76,25 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok", "service": "iceReach", "version": app.version}
 
+    # Serve the built React SPA if present (production single-process deploy).
+    # In dev, the Vite server proxies /api here instead.
+    import os
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    dist = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+    if os.path.isdir(dist):
+        assets = os.path.join(dist, "assets")
+        if os.path.isdir(assets):
+            app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa(full_path: str):
+            target = os.path.join(dist, full_path)
+            if full_path and os.path.isfile(target):
+                return FileResponse(target)
+            return FileResponse(os.path.join(dist, "index.html"))  # SPA client-routing fallback
+
     return app
 
 
