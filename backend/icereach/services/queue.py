@@ -140,7 +140,7 @@ def run_worker(poll_interval: float = 1.0, max_idle_loops: Optional[int] = None)
 
 
 if __name__ == "__main__":  # pragma: no cover
-    # Import handlers so they register, then run.
-    from . import sender  # noqa: F401  (registers send_campaign)
-    print("iceReach worker starting...")
+    # Import handler modules so they register with the queue, then run.
+    from . import dsn, importer, sender  # noqa: F401
+    print("iceReach worker starting... (handlers: send_campaign, import_contacts, poll_dsn)")
     run_worker()
