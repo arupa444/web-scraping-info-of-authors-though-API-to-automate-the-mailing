@@ -7,6 +7,7 @@ from .sending import (
     CampaignVariant,
     Event,
     Message,
+    SavedBlock,
     SendingDomain,
     Template,
 )
@@ -15,6 +16,6 @@ from .workspace import ApiKey, Membership, Session, User, Workspace
 __all__ = [
     "Workspace", "User", "Membership", "Session", "ApiKey",
     "Contact", "ContactList", "ListMembership", "Segment", "Suppression",
-    "SendingDomain", "Template", "Campaign", "CampaignVariant", "Message", "Event",
+    "SendingDomain", "Template", "SavedBlock", "Campaign", "CampaignVariant", "Message", "Event",
     "Job", "AuditLog", "AIUsage",
 ]

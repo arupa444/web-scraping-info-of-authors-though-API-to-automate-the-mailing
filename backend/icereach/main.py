@@ -65,12 +65,19 @@ def create_app() -> FastAPI:
 
     # Routers added as their work-streams land:
     for module_name in ("contacts", "lists", "segments", "sending_domains",
-                        "campaigns", "analytics", "ai", "public", "jobs"):
+                        "campaigns", "templates", "analytics", "ai", "public", "jobs"):
         try:
             mod = __import__(f"icereach.routers.{module_name}", fromlist=["router"])
             app.include_router(mod.router)
         except ModuleNotFoundError:
             pass
+
+    # Templates module also exposes a saved-blocks router.
+    try:
+        from .routers.templates import saved_router
+        app.include_router(saved_router)
+    except ModuleNotFoundError:
+        pass
 
     @app.get("/health", tags=["meta"])
     def health():

@@ -13,7 +13,7 @@ ALEMBIC_INI = os.path.join(REPO_ROOT, "backend", "alembic.ini")
 EXPECTED_TABLES = {
     "workspaces", "users", "memberships", "sessions", "api_keys",
     "contacts", "contact_lists", "list_memberships", "segments", "suppressions",
-    "sending_domains", "templates", "campaigns", "campaign_variants", "messages", "events",
+    "sending_domains", "templates", "saved_blocks", "campaigns", "campaign_variants", "messages", "events",
     "jobs", "audit_logs", "ai_usage",
 }
 

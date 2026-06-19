@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from ..db import get_db
 from ..models import Campaign, CampaignVariant
-from ..schemas.campaign import CampaignIn, CampaignOut, VariantOut
+from ..schemas.campaign import CampaignIn, CampaignOut, VariantIn, VariantOut
 from ..security.deps import AuthContext, auth_context
 from ..services import sender  # noqa: F401 — registers the send_campaign handler
 from ..services.analytics import campaign_metrics
@@ -42,7 +42,15 @@ def create_campaign(body: CampaignIn, ctx: AuthContext = Depends(auth_context), 
     )
     db.add(c)
     db.flush()
-    for v in body.variants:
+    variants = list(body.variants)
+    # Seed a variant from a template when none were supplied explicitly.
+    if not variants and body.template_id is not None:
+        from ..models import Template
+        tpl = db.scalar(select(Template).where(Template.id == body.template_id, Template.workspace_id == ctx.workspace.id))
+        if tpl is None:
+            raise HTTPException(status_code=404, detail="Template not found")
+        variants = [VariantIn(subject=tpl.subject, html=tpl.html, text=tpl.text)]
+    for v in variants:
         db.add(CampaignVariant(campaign_id=c.id, subject=v.subject, html=v.html, text=v.text, weight=v.weight))
     db.commit()
     db.refresh(c)

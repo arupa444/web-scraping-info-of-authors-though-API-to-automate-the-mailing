@@ -19,6 +19,7 @@ class CampaignIn(BaseModel):
     sending_domain_id: int | None = None
     list_id: int | None = None
     segment_id: int | None = None
+    template_id: int | None = None
     variants: list[VariantIn] = Field(default_factory=list)
 
 
