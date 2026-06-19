@@ -14,6 +14,7 @@ env/
 
 # iceReach generated artifacts & job state
 generated_files/
+.run/         # run.sh / run.bat process state (pids + logs)
 *_checkpoint.txt
 email_feedback_*.csv
 filtered_*.csv
