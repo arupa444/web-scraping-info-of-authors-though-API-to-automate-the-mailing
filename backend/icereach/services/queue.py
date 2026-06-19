@@ -120,14 +120,24 @@ def _fire_dlq(job: Job) -> None:
             pass
 
 
-def run_worker(poll_interval: float = 1.0, max_idle_loops: Optional[int] = None) -> None:
-    """Worker loop: claim and run jobs until interrupted (or idle limit hit, for tests)."""
+def run_worker(poll_interval: float = 1.0, max_idle_loops: Optional[int] = None,
+               on_idle: Optional[Callable[[Session], None]] = None) -> None:
+    """Worker loop: claim and run jobs until interrupted (or idle limit hit, for tests).
+
+    `on_idle(db)` runs on idle cycles — used to advance time-based work (automation
+    journeys) without an external scheduler.
+    """
     idle = 0
     while True:
         db = SessionLocal()
         try:
             job = claim_next(db)
             if job is None:
+                if on_idle is not None:
+                    try:
+                        on_idle(db)
+                    except Exception:  # noqa: BLE001 — never let a tick kill the worker
+                        db.rollback()
                 idle += 1
                 if max_idle_loops is not None and idle >= max_idle_loops:
                     return
@@ -142,5 +152,16 @@ def run_worker(poll_interval: float = 1.0, max_idle_loops: Optional[int] = None)
 if __name__ == "__main__":  # pragma: no cover
     # Import handler modules so they register with the queue, then run.
     from . import dsn, importer, sender  # noqa: F401
-    print("iceReach worker starting... (handlers: send_campaign, import_contacts, poll_dsn)")
-    run_worker()
+    from . import automation
+
+    # Advance automation journeys at most every ~30s on idle cycles.
+    _last = [0.0]
+
+    def _tick(db):
+        now = time.monotonic()
+        if now - _last[0] >= 30:
+            _last[0] = now
+            automation.advance_due_runs(db)
+
+    print("iceReach worker starting... (send_campaign, import_contacts, poll_dsn, +automation ticks)")
+    run_worker(on_idle=_tick)
