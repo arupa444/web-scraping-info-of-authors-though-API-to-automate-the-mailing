@@ -33,7 +33,7 @@ from .esp import get_provider
 from .merge import html_to_text, render
 from .queue import register
 from .segments import build_filter
-from .tracking import encode_token, rewrite_html
+from .tracking import encode_token, rewrite_html, unsubscribe_footer_html, unsubscribe_footer_text
 
 
 def _steps(db: DbSession, automation_id: int) -> list[AutomationStep]:
@@ -133,6 +133,8 @@ def _send_step(db: DbSession, run: AutomationRun, automation: Automation, step: 
     body_html = rewrite_html(render(html, row), msg_row.id)
     body_text = render(text, row)
     unsub = f"{settings.base_url}/u/{encode_token(msg_row.id)}"
+    body_html += unsubscribe_footer_html(unsub)
+    body_text += unsubscribe_footer_text(unsub)
 
     provider = get_provider(domain)
     try:

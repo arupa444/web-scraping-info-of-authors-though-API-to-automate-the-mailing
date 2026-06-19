@@ -58,12 +58,22 @@ def track_click(token: str, request: Request, db: DbSession = Depends(get_db)):
         return RedirectResponse(url="/", status_code=302)
 
 
-_UNSUB_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Unsubscribe</title></head>
-<body style="font-family:sans-serif;max-width:480px;margin:64px auto;text-align:center">
-<h2>Unsubscribe</h2>
-<p>Click below to stop receiving these emails.</p>
+_UNSUB_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Unsubscribe</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:64px auto;padding:0 16px;text-align:center;color:#111827">
+<h2 style="margin-bottom:8px">Unsubscribe</h2>
+<p style="color:#6b7280;margin-top:0">You're still subscribed. Click the button below to confirm
+and stop receiving these emails.</p>
 <form method="post" action="/u/{token}"><button type="submit"
-  style="padding:10px 20px;font-size:16px">Confirm unsubscribe</button></form>
+  style="padding:12px 22px;font-size:16px;border:0;border-radius:8px;background:#dc2626;color:#fff;cursor:pointer">
+  Confirm unsubscribe</button></form>
+</body></html>"""
+
+_UNSUB_DONE = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Unsubscribed</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:64px auto;padding:0 16px;text-align:center;color:#111827">
+<h2>You're unsubscribed</h2>
+<p style="color:#6b7280">You will no longer receive these emails. You can close this page.</p>
 </body></html>"""
 
 
@@ -99,8 +109,11 @@ def unsubscribe_page(token: str):
 
 @router.post("/u/{token}")
 def unsubscribe_confirm(token: str, db: DbSession = Depends(get_db)):
+    # Only this POST mutates state — Gmail's one-click button posts here, and the
+    # confirmation page's button posts here. A GET (scanner/prefetch/just opening
+    # the link) never unsubscribes anyone.
     ok = _do_unsubscribe(db, token)
     return HTMLResponse(
-        "<p>You have been unsubscribed.</p>" if ok else "<p>Invalid or expired link.</p>",
+        _UNSUB_DONE if ok else "<p>Invalid or expired unsubscribe link.</p>",
         status_code=200 if ok else 400,
     )

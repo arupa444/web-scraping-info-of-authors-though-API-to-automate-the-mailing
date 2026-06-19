@@ -153,6 +153,29 @@ def rewrite_html(html: str, message_id: int) -> str:
     return rewritten + _open_pixel(message_id)
 
 
+def unsubscribe_footer_html(unsub_url: str) -> str:
+    """A visible "Unsubscribe" footer to append to an outbound HTML body.
+
+    The link points at the GET ``/u/{token}`` confirmation page, which has no
+    side effect — so a security scanner or link prefetcher that fetches it can
+    never unsubscribe anyone; only a deliberate confirm (POST) does. Append this
+    AFTER :func:`rewrite_html` so the unsubscribe link is not click-tracked.
+    """
+    return (
+        '<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;'
+        "font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;"
+        'color:#6b7280;text-align:center">'
+        "Don't want these emails? "
+        f'<a href="{unsub_url}" style="color:#6b7280;text-decoration:underline">Unsubscribe</a>.'
+        "</div>"
+    )
+
+
+def unsubscribe_footer_text(unsub_url: str) -> str:
+    """Plain-text counterpart of :func:`unsubscribe_footer_html`."""
+    return f"\n\n--\nUnsubscribe: {unsub_url}\n"
+
+
 def is_bot(user_agent: str) -> bool:
     """Return True for known prefetch/proxy/scanner user agents.
 

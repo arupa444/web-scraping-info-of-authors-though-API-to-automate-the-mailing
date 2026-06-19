@@ -89,7 +89,9 @@ def test_send_creates_messages_with_tracking():
         wire = FakeSmtp.sent[0][2].as_string()
         assert "/t/o/" in wire  # open pixel
         assert "/t/c/" in wire  # click rewrite
-        assert "List-Unsubscribe" in wire
+        assert "List-Unsubscribe" in wire  # native one-click header
+        assert "/u/" in wire  # visible unsubscribe footer link in the body
+        assert "Unsubscribe" in wire
     finally:
         db.close()
 

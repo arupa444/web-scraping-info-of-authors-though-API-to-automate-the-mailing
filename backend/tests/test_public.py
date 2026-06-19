@@ -72,6 +72,23 @@ def test_click_redirects_and_records():
     assert len(_events(mid, "click")) == 1
 
 
+def test_unsubscribe_get_is_safe_shows_confirmation_only():
+    # Opening the link (or a scanner/prefetch GET) must NOT unsubscribe — it only
+    # renders the confirmation page. The unsubscribe reflects only on POST.
+    ws_id, _, mid = _seed_message()
+    token = encode_token(mid)
+    c = TestClient(app)
+    r = c.get(f"/u/{token}")
+    assert r.status_code == 200
+    assert "Confirm unsubscribe" in r.text
+    db = SessionLocal()
+    try:
+        assert db.query(Suppression).filter(Suppression.workspace_id == ws_id).count() == 0
+        assert len(_events(mid, "unsubscribe")) == 0
+    finally:
+        db.close()
+
+
 def test_unsubscribe_suppresses_contact():
     ws_id, _, mid = _seed_message()
     token = encode_token(mid)

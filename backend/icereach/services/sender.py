@@ -26,7 +26,7 @@ from .esp import get_provider
 from .merge import html_to_text, render
 from .queue import register
 from .segments import evaluate as evaluate_segment
-from .tracking import encode_token, rewrite_html
+from .tracking import encode_token, rewrite_html, unsubscribe_footer_html, unsubscribe_footer_text
 
 
 def _recipients(db: DbSession, campaign: Campaign) -> list[Contact]:
@@ -118,6 +118,10 @@ def send_campaign(db: DbSession, job, progress) -> dict:
             html = rewrite_html(render(variant.html, row), msg_row.id)
             text = render(variant.text or html_to_text(variant.html), row)
             unsub_url = f"{settings.base_url}/u/{encode_token(msg_row.id)}"
+            # Visible unsubscribe footer (the header alone isn't always surfaced;
+            # this is also good-practice and often legally required for bulk mail).
+            html += unsubscribe_footer_html(unsub_url)
+            text += unsubscribe_footer_text(unsub_url)
             try:
                 provider_id = provider.send(
                     from_name=campaign.from_name, from_email=campaign.from_email, to_email=contact.email,
