@@ -70,16 +70,41 @@ def _generate_json(prompt: str, *, temperature: float, max_output_tokens: int) -
         The decoded JSON value (``list`` or ``dict``).
     """
     client = _client()
+    config_kwargs: dict[str, Any] = dict(
+        response_mime_type=_JSON_MIME,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+    )
+    # Gemini 3 spends "thinking" tokens before output; for these structured tasks we
+    # don't need it, and leaving it on truncates the JSON within the token budget.
+    try:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+    except (AttributeError, TypeError):  # older SDK without ThinkingConfig
+        pass
+
     response = client.models.generate_content(
         model=settings.gemini_model,
         contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type=_JSON_MIME,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-        ),
+        config=types.GenerateContentConfig(**config_kwargs),
     )
-    return json.loads(response.text)
+    return json.loads(_clean_json(response.text))
+
+
+def _clean_json(text: str) -> str:
+    """Strip markdown fences / stray prose so json.loads sees pure JSON."""
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = t.strip("`")
+        if t[:4].lower() == "json":
+            t = t[4:]
+        t = t.strip()
+    # Fall back to the outermost JSON array/object if extra text wraps it.
+    if not t[:1] in ("{", "["):
+        start = min((t.find(c) for c in "[{" if t.find(c) != -1), default=-1)
+        end = max(t.rfind("]"), t.rfind("}"))
+        if start != -1 and end > start:
+            t = t[start:end + 1]
+    return t
 
 
 def generate_subjects(
@@ -131,7 +156,7 @@ def draft_body(brief: str, tone: str = "professional") -> dict:
     if not is_enabled():
         raise AIDisabled("AI is disabled: GEMINI_API_KEY is not set")
     prompt = prompts.body_prompt(brief, tone=tone)
-    raw = _generate_json(prompt, temperature=0.7, max_output_tokens=1500)
+    raw = _generate_json(prompt, temperature=0.7, max_output_tokens=2048)
     data = raw if isinstance(raw, dict) else {}
     return {
         "html": str(data.get("html", "")),
