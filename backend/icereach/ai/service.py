@@ -194,3 +194,32 @@ def critique_deliverability(subject: str, html: str) -> dict:
         "issues": [str(x) for x in (data.get("issues") or [])],
         "suggestions": [str(x) for x in (data.get("suggestions") or [])],
     }
+
+
+def draft_sequence(goal: str, steps: int = 3) -> list[dict]:
+    """Draft a multi-email drip sequence for a goal.
+
+    Returns a list of ``{subject, html, wait_days}`` dicts (one per email).
+
+    Raises:
+        AIDisabled: if AI is not enabled.
+    """
+    if not is_enabled():
+        raise AIDisabled("AI is disabled: GEMINI_API_KEY is not set")
+    prompt = prompts.sequence_prompt(goal, steps=steps)
+    raw = _generate_json(prompt, temperature=0.7, max_output_tokens=3072)
+    items = raw if isinstance(raw, list) else raw.get("emails") or raw.get("sequence") or []
+    out = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            wait_days = int(item.get("wait_days", 0))
+        except (TypeError, ValueError):
+            wait_days = 0
+        out.append({
+            "subject": str(item.get("subject", "")),
+            "html": str(item.get("html", "")),
+            "wait_days": max(0, wait_days),
+        })
+    return out

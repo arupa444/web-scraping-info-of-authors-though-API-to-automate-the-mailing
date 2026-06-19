@@ -1,5 +1,6 @@
 """Re-export all models so metadata is fully populated on import."""
 
+from .automation import Automation, AutomationRun, AutomationStep
 from .contact import Contact, ContactList, ListMembership, Segment, Suppression
 from .job import AIUsage, AuditLog, Job
 from .sending import (
@@ -17,5 +18,6 @@ __all__ = [
     "Workspace", "User", "Membership", "Session", "ApiKey",
     "Contact", "ContactList", "ListMembership", "Segment", "Suppression",
     "SendingDomain", "Template", "SavedBlock", "Campaign", "CampaignVariant", "Message", "Event",
+    "Automation", "AutomationStep", "AutomationRun",
     "Job", "AuditLog", "AIUsage",
 ]

@@ -84,7 +84,9 @@ class Message(Base, TimestampMixin, WorkspaceScopedMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), index=True, nullable=False)
+    # campaign_id is null for automation-sent messages; automation_id is null for campaigns.
+    campaign_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), index=True)
+    automation_id: Mapped[Optional[int]] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), index=True)
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True, nullable=False)
     variant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaign_variants.id"))
     status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)  # queued|sent|hard_bounce|soft_bounce|failed

@@ -47,6 +47,7 @@ def add_contacts(list_id: int, body: ListAddIn, ctx: AuthContext = Depends(auth_
                  db: DbSession = Depends(get_db)):
     lst = _get_owned(db, ctx, list_id)
     added = 0
+    newly_subscribed: list[int] = []
     for cid in body.contact_ids:
         contact = db.scalar(select(Contact).where(Contact.id == cid, Contact.workspace_id == ctx.workspace.id))
         if contact is None:
@@ -57,7 +58,13 @@ def add_contacts(list_id: int, body: ListAddIn, ctx: AuthContext = Depends(auth_
         if existing is None:
             db.add(ListMembership(list_id=lst.id, contact_id=cid, status="subscribed", subscribed_at=datetime.utcnow()))
             added += 1
+            newly_subscribed.append(cid)
     db.commit()
+
+    # Trigger any list_subscribe automations for the newly-added contacts.
+    if newly_subscribed:
+        from ..services.automation import enroll_for_list
+        enroll_for_list(db, ctx.workspace.id, lst.id, newly_subscribed)
     return {"added": added}
 
 

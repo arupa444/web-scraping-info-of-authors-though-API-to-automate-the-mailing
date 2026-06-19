@@ -103,3 +103,19 @@ def critique_prompt(subject: str, html: str) -> str:
         f"{_delimit('subject', subject)}\n"
         f"{_delimit('html', html)}"
     )
+
+
+def sequence_prompt(goal: str, steps: int = 3) -> str:
+    """Build the prompt for :func:`icereach.ai.service.draft_sequence` (drip journey)."""
+    return (
+        f"You are an email lifecycle expert. Design a {steps}-email drip sequence "
+        "for the goal below. Space the emails sensibly with wait days between them.\n"
+        "Each email's HTML must be email-client-safe (inline styles, no script/iframe). "
+        "Use the reserved token {name} where the recipient's name belongs.\n"
+        "Respond with JSON only: an array of exactly "
+        f"{steps} objects, each with the keys "
+        '"subject" (string), "html" (email-safe HTML body), and "wait_days" '
+        "(integer days to wait BEFORE sending this email; 0 for the first). "
+        "Return no prose outside the JSON.\n\n"
+        f"{_delimit('goal', goal)}"
+    )

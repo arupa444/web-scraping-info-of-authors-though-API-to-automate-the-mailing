@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..ai import service as ai_service
 from ..schemas.ai import BodyIn, CritiqueIn, SubjectsIn
+from ..schemas.automation import SequenceIn
 from ..security.deps import AuthContext, auth_context
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -31,3 +32,8 @@ def body_draft(body: BodyIn, ctx: AuthContext = Depends(auth_context)):
 @router.post("/critique")
 def critique(body: CritiqueIn, ctx: AuthContext = Depends(auth_context)):
     return _guard(ai_service.critique_deliverability, body.subject, body.html)
+
+
+@router.post("/sequence")
+def sequence(body: SequenceIn, ctx: AuthContext = Depends(auth_context)):
+    return {"emails": _guard(ai_service.draft_sequence, body.goal, body.steps)}
