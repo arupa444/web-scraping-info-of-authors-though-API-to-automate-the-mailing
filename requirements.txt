@@ -6,9 +6,6 @@ python-multipart>=0.0.9,<0.1.0
 dnspython
 python-dotenv>=1.0,<1.1
 httpx>=0.27,<0.29
-pydantic==2.13.4
-pydantic-core==2.46.4
-websockets==16.0
 psutil
 pandas
 openpyxl
@@ -17,7 +14,7 @@ alembic
 argon2-cffi
 itsdangerous
 dkimpy
-google-genai==2.8.0
+google-genai
 
 # dev
 pytest
