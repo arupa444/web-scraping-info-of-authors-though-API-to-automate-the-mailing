@@ -6,20 +6,25 @@
 
 ---
 
-## Status — Phases 1–3 built (186 backend tests green)
+## Status — All 6 phases built (205 backend tests green)
 
-**Phase 1 — Foundation:** multi-tenant workspaces/users/roles, cookie sessions + CSRF, API keys; contacts, lists, segments (JSON rule engine), background CSV/Excel import (suppression-aware); campaign compose (`{merge}` tags), DB-backed job queue + worker, reused SMTP connection per batch, **DKIM-signed** sends, open/click tracking, one-click `List-Unsubscribe`; sending-domain DKIM keygen + SPF/DKIM/DMARC verify; **DSN bounce poller** → hard/soft bounce + auto-suppression; per-campaign analytics; AI assists.
+**P1 Foundation:** multi-tenant workspaces/users/roles, cookie sessions + CSRF, API keys; contacts, lists, segments (JSON rule engine), background CSV/Excel import (suppression-aware); campaign compose (`{merge}` tags), DB-backed job queue + worker, **DKIM-signed** sends, open/click tracking, one-click `List-Unsubscribe`; sending-domain DKIM keygen + SPF/DKIM/DMARC verify; **DSN bounce poller**; per-campaign analytics.
 
-**Phase 2 — Email builder:** block document → client-safe inline-styled table HTML (heading/text/button/image/divider/spacer/columns); template library; live `<iframe>` preview (= sent output); reusable saved-blocks; DKIM-signed test sends; campaigns seedable from a template.
+**P2 Email builder:** block document → client-safe inline-styled table HTML; template library; live `<iframe>` preview (= sent output); reusable saved-blocks; DKIM-signed test sends; campaigns seedable from a template.
 
-**Phase 3 — Automation journeys:** enroll → `send` / `wait` / `condition` (segment filter) → done/exited; list-subscribe auto-enrollment; manual/segment enrollment; runs view; worker advances due journeys on idle ticks; AI drip-sequence drafting.
+**P3 Automation journeys:** enroll → `send` / `wait` / `condition` → done/exited; list-subscribe auto-enrollment; manual/segment enrollment; worker advances due journeys; AI drip drafting.
 
-**AI throughout** — Gemini `gemini-3-flash-preview`: subject generation, body drafting, pre-send spam/deliverability critique, drip-sequence drafting. Degrades gracefully (HTTP 503) without `GEMINI_API_KEY`. *(Honest:* `delivered`/`complaints` are not truthfully sourceable over SMTP, so analytics render them as `—` until ESP integration in Phase 4.)*
+**P4 Deliverability/ESP:** provider adapters (**SMTP / Resend / SendGrid**); inbound webhooks (delivered/bounce/complaint) that make `delivered`/`complaints` real; **A/B** per-variant analytics + winner; send-time optimization.
 
-Remaining phases (P4 ESP adapters + complaint/FBL + A/B + send-time, P5 public API + signup forms + archive, P6 billing/quotas/RBAC/audit UI) are **designed** in the spec and built incrementally. See:
+**P5 Growth/API:** **signup forms** with double opt-in (hosted + confirm), public **newsletter archive**, public **`/v1` REST API** (API-key auth, incl. transactional `/v1/emails`), outbound webhooks, AI analytics narratives.
 
-- Design spec (all 6 phases): [docs/superpowers/specs/2026-06-19-icereach-platform-design.md](docs/superpowers/specs/2026-06-19-icereach-platform-design.md)
-- Phase plans: [P1](docs/superpowers/plans/2026-06-19-icereach-phase1-foundation.md) · [P2](docs/superpowers/plans/2026-06-19-icereach-phase2-builder.md) · [P3](docs/superpowers/plans/2026-06-19-icereach-phase3-automation.md)
+**P6 SaaS hardening:** monthly **send quotas** (enforced), **rate limiting** (429 + `Retry-After`), **audit log** + query, **RBAC** role gates, members API, and a **billing scaffold** (plans + checkout that applies a plan — *no live Stripe*).
+
+**AI throughout** — Gemini `gemini-3-flash-preview`: subjects, body drafting, spam/deliverability critique, drip sequences, analytics narratives. Degrades gracefully (HTTP 503) without `GEMINI_API_KEY`. With ESP webhooks (P4) wired, `delivered`/`complaints` become real; over plain SMTP without webhooks they remain `—` (honest).
+
+Design spec + per-phase plans: [spec](docs/superpowers/specs/2026-06-19-icereach-platform-design.md) · [P1](docs/superpowers/plans/2026-06-19-icereach-phase1-foundation.md) · [P2](docs/superpowers/plans/2026-06-19-icereach-phase2-builder.md) · [P3](docs/superpowers/plans/2026-06-19-icereach-phase3-automation.md) · [P4-6](docs/superpowers/plans/2026-06-19-icereach-phase4-6.md)
+
+> **Not production-hardened:** billing is a scaffold; secrets (SMTP/DKIM/ESP/API keys) are stored unencrypted — encrypt at rest before real use; rate limiting is in-memory (single instance).
 
 ---
 
