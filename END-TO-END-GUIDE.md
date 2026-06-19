@@ -33,27 +33,35 @@ cd frontend && npm install && npm run build && cd ..
 
 ## 2. Configure `.env` (repo root)
 
-Create `.env` (it's gitignored). Fill in your **app password**:
+Copy the template and edit it (`.env` is gitignored — never commit it):
 
-```ini
-# Security — change for anything beyond local
-SECRET_KEY=please-change-this-to-a-long-random-string
-
-# Public base URL used to build open/click/unsubscribe links.
-# Localhost is fine for testing on your own machine. For real recipients this
-# MUST be a public URL (your server/tunnel), or tracking + unsubscribe won't work.
-BASE_URL=http://127.0.0.1:8000
-
-# AI (optional but powering subjects/body/critique/sequences/narratives)
-GEMINI_API_KEY=your-gemini-key
-GEMINI_MODEL=gemini-3-flash-preview
-
-# CORS origin for the SPA dev server (only needed when running Vite separately)
-FRONTEND_ORIGIN=http://127.0.0.1:5173
+```bash
+cp .env.example .env
 ```
 
-> The Zoho SMTP host/port/user/password are **not** global env vars — you enter them per
-> *sending domain* inside the app (§4), so different workspaces can use different senders.
+`.env.example` documents every setting; each is optional and falls back to a dev default.
+For local use you really only need to set `SECRET_KEY` (and `GEMINI_API_KEY` for the AI
+features). Generate a secret with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+The settings you'll care about:
+
+| Key | What it's for |
+|---|---|
+| `SECRET_KEY` | Signs sessions + CSRF tokens. **Set a long random value** for anything beyond local. |
+| `BASE_URL` | Public URL used to build open/click/**unsubscribe** links. Localhost works only for testing on your own machine; for real recipients set it to your **public** host/tunnel or tracking + unsubscribe break. |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | Enables AI (subjects/body/critique/sequences/narratives). Without it those endpoints return 503; everything else works. Model defaults to `gemini-3-flash-preview`. |
+| `FRONTEND_ORIGIN` | **CORS allow-origin for the SPA.** Only used in **two-process dev mode** (the Vite dev server on `:5173` calling the API on `:8000` is cross-origin). In single-process mode (`run.py` serves the built SPA from the same origin) it's ignored. |
+| `DATABASE_URL` | SQLite by default; set a Postgres URL for production. |
+| `RATE_LIMIT_PER_MINUTE` | Per-IP throttle on API/public routes (`0` disables). |
+| `WEBHOOK_SECRET` | If set, inbound ESP webhooks must include `?secret=...` (see §14). |
+| `BOUNCE_IMAP_*` | IMAP mailbox the DSN poller reads for bounces (optional; see §10). |
+
+> The Zoho SMTP host/port/user/password are **not** in `.env` — you enter them per
+> *sending domain* inside the app (§5), so different workspaces can use different senders.
 
 ## 3. Run
 
