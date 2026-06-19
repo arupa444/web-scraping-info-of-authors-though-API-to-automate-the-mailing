@@ -3,7 +3,6 @@ uvicorn>=0.29,<0.32
 pydantic[email]>=2.6,<2.9
 pydantic-settings>=2.0,<2.4
 python-multipart>=0.0.9,<0.1.0
-requests
 dnspython
 python-dotenv>=1.0,<1.1
 httpx>=0.27,<0.29
