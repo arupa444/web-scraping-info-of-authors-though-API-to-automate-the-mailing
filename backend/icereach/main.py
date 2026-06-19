@@ -65,7 +65,8 @@ def create_app() -> FastAPI:
 
     # Routers added as their work-streams land:
     for module_name in ("contacts", "lists", "segments", "sending_domains",
-                        "campaigns", "templates", "automations", "analytics", "ai", "public", "jobs"):
+                        "campaigns", "templates", "automations", "analytics", "ai",
+                        "public", "webhooks", "jobs"):
         try:
             mod = __import__(f"icereach.routers.{module_name}", fromlist=["router"])
             app.include_router(mod.router)

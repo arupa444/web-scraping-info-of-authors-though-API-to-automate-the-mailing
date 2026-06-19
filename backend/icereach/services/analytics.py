@@ -15,7 +15,7 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Event, Message
+from ..models import CampaignVariant, Event, Message
 
 
 def _safe_ratio(numerator: int, denominator: int) -> float:
@@ -88,9 +88,12 @@ def campaign_metrics(db: Session, workspace_id: int, campaign_id: int) -> dict:
     ctr = _safe_ratio(total_clicks, sent)
     ctor = _safe_ratio(unique_clicks, unique_opens)
 
-    # delivered/complaints need ESP + feedback-loop data we don't have yet.
-    delivered: Optional[int] = None
-    complaints: Optional[int] = None
+    # delivered/complaints become real once ESP webhooks (P4) record them; until
+    # any such signal exists we report None rather than a misleading zero.
+    _, delivered_count = _event_counts("delivered")
+    _, complaint_count = _event_counts("complaint")
+    delivered: Optional[int] = delivered_count if delivered_count else None
+    complaints: Optional[int] = complaint_count if complaint_count else None
 
     return {
         "sent": sent,
@@ -106,3 +109,35 @@ def campaign_metrics(db: Session, workspace_id: int, campaign_id: int) -> dict:
         "delivered": delivered,
         "complaints": complaints,
     }
+
+
+def variant_breakdown(db: Session, workspace_id: int, campaign_id: int) -> dict:
+    """Per-variant A/B stats + the current winner (by unique open rate)."""
+    variants = db.scalars(
+        select(CampaignVariant).where(CampaignVariant.campaign_id == campaign_id)
+    ).all()
+    rows = []
+    for v in variants:
+        sent = db.scalar(
+            select(func.count(Message.id)).where(
+                Message.campaign_id == campaign_id, Message.variant_id == v.id, Message.status == "sent"
+            )
+        ) or 0
+        opens = db.scalar(
+            select(func.count(func.distinct(Event.message_id)))
+            .select_from(Event).join(Message, Message.id == Event.message_id)
+            .where(Message.campaign_id == campaign_id, Message.variant_id == v.id, Event.type == "open")
+        ) or 0
+        clicks = db.scalar(
+            select(func.count(func.distinct(Event.message_id)))
+            .select_from(Event).join(Message, Message.id == Event.message_id)
+            .where(Message.campaign_id == campaign_id, Message.variant_id == v.id, Event.type == "click")
+        ) or 0
+        rows.append({
+            "variant_id": v.id, "subject": v.subject, "weight": v.weight,
+            "sent": int(sent), "unique_opens": int(opens), "unique_clicks": int(clicks),
+            "open_rate": _safe_ratio(int(opens), int(sent)),
+            "click_rate": _safe_ratio(int(clicks), int(sent)),
+        })
+    winner = max(rows, key=lambda r: (r["open_rate"], r["click_rate"]), default=None)
+    return {"variants": rows, "winner_variant_id": winner["variant_id"] if winner and winner["sent"] else None}

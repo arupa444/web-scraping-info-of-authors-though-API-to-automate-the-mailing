@@ -22,10 +22,10 @@ from ..models import (
     SendingDomain,
     Suppression,
 )
+from .esp import get_provider
 from .merge import html_to_text, render
 from .queue import register
 from .segments import evaluate as evaluate_segment
-from .smtp import SmtpSession, build_message, dkim_sign_message
 from .tracking import encode_token, rewrite_html
 
 
@@ -79,8 +79,8 @@ def send_campaign(db: DbSession, job, progress) -> dict:
         ).all()
     }
 
-    session = SmtpSession(domain.smtp_host, domain.smtp_port, domain.smtp_username, domain.smtp_password)
-    session.connect()
+    provider = get_provider(domain)
+    provider.open()
     sent = 0
     skipped = 0
     total = len(recipients)
@@ -107,19 +107,14 @@ def send_campaign(db: DbSession, job, progress) -> dict:
             html = rewrite_html(render(variant.html, row), msg_row.id)
             text = render(variant.text or html_to_text(variant.html), row)
             unsub_url = f"{settings.base_url}/u/{encode_token(msg_row.id)}"
-            email_msg = build_message(
-                campaign.from_name, campaign.from_email, contact.email,
-                subject, html, text, list_unsub_url=unsub_url,
-            )
             try:
-                if domain.dkim_verified:
-                    wire = dkim_sign_message(email_msg, domain.domain, domain.dkim_selector, domain.dkim_private_key)
-                    session.send(campaign.from_email, contact.email, wire)
-                else:
-                    session.send(campaign.from_email, contact.email, email_msg)
+                provider_id = provider.send(
+                    from_name=campaign.from_name, from_email=campaign.from_email, to_email=contact.email,
+                    subject=subject, html=html, text=text, list_unsub_url=unsub_url,
+                )
                 msg_row.status = "sent"
                 msg_row.sent_at = datetime.utcnow()
-                msg_row.message_id = email_msg["Message-ID"]
+                msg_row.message_id = provider_id
                 sent += 1
             except Exception as exc:  # noqa: BLE001 — record per-recipient failure, keep going
                 msg_row.status = "failed"
@@ -128,7 +123,7 @@ def send_campaign(db: DbSession, job, progress) -> dict:
             if total:
                 progress((i + 1) / total * 100, f"Sent {sent}/{total}")
     finally:
-        session.close()
+        provider.close()
 
     campaign.status = "sent"
     campaign.sent_at = datetime.utcnow()

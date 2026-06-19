@@ -13,7 +13,7 @@ from icereach.models import (
     Suppression,
     Workspace,
 )
-from icereach.services import sender
+from icereach.services import esp, sender
 
 
 class FakeSmtp:
@@ -35,7 +35,7 @@ class FakeSmtp:
 @pytest.fixture(autouse=True)
 def _stub_smtp(monkeypatch):
     FakeSmtp.sent = []
-    monkeypatch.setattr(sender, "SmtpSession", FakeSmtp)
+    monkeypatch.setattr(esp, "SmtpSession", FakeSmtp)
 
 
 def _seed(db, emails=("a@x.com", "b@x.com")):

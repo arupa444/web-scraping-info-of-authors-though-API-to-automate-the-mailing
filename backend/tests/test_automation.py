@@ -13,6 +13,7 @@ from icereach.models import (
     Workspace,
 )
 from icereach.services import automation as engine
+from icereach.services import esp
 
 
 class FakeSmtp:
@@ -27,7 +28,7 @@ class FakeSmtp:
 @pytest.fixture(autouse=True)
 def _stub(monkeypatch):
     FakeSmtp.sent = []
-    monkeypatch.setattr(engine, "SmtpSession", FakeSmtp)
+    monkeypatch.setattr(esp, "SmtpSession", FakeSmtp)
 
 
 def _domain(db, ws):

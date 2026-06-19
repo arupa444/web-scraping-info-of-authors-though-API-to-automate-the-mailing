@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from icereach.config import settings
 from icereach.db import SessionLocal
 from icereach.main import app
-from icereach.services import queue, sender
+from icereach.services import esp, queue, sender
 
 
 def _client(email="cf@x.com", ws="CF"):
@@ -24,7 +24,7 @@ class _FakeSmtp:
 
 
 def test_full_campaign_send_and_analytics(monkeypatch):
-    monkeypatch.setattr(sender, "SmtpSession", _FakeSmtp)
+    monkeypatch.setattr(esp, "SmtpSession", _FakeSmtp)
     c = _client()
     h = _csrf(c)
 

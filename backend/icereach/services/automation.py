@@ -29,10 +29,10 @@ from ..models import (
     Suppression,
     Template,
 )
+from .esp import get_provider
 from .merge import html_to_text, render
 from .queue import register
 from .segments import build_filter
-from .smtp import SmtpSession, build_message, dkim_sign_message
 from .tracking import encode_token, rewrite_html
 
 
@@ -131,21 +131,18 @@ def _send_step(db: DbSession, run: AutomationRun, automation: Automation, step: 
     body_html = rewrite_html(render(html, row), msg_row.id)
     body_text = render(text, row)
     unsub = f"{settings.base_url}/u/{encode_token(msg_row.id)}"
-    email_msg = build_message(automation.from_name, automation.from_email, contact.email, subj, body_html, body_text, list_unsub_url=unsub)
 
-    session = SmtpSession(domain.smtp_host, domain.smtp_port, domain.smtp_username, domain.smtp_password)
+    provider = get_provider(domain)
     try:
-        session.connect()
-        if domain.dkim_verified:
-            session.send(automation.from_email, contact.email,
-                         dkim_sign_message(email_msg, domain.domain, domain.dkim_selector, domain.dkim_private_key))
-        else:
-            session.send(automation.from_email, contact.email, email_msg)
+        provider.open()
+        msg_row.message_id = provider.send(
+            from_name=automation.from_name, from_email=automation.from_email, to_email=contact.email,
+            subject=subj, html=body_html, text=body_text, list_unsub_url=unsub,
+        )
         msg_row.status = "sent"
         msg_row.sent_at = datetime.utcnow()
-        msg_row.message_id = email_msg["Message-ID"]
     finally:
-        session.close()
+        provider.close()
     db.commit()
 
 

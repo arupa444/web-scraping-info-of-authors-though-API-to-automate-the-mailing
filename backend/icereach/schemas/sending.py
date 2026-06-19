@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 class SendingDomainIn(BaseModel):
     domain: str = Field(min_length=3, max_length=255)
+    provider: str = "smtp"  # smtp | resend | sendgrid
+    api_key: str = ""       # for ESP providers
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -14,6 +16,7 @@ class SendingDomainIn(BaseModel):
 class SendingDomainOut(BaseModel):
     id: int
     domain: str
+    provider: str
     dkim_selector: str
     spf_verified: bool
     dkim_verified: bool

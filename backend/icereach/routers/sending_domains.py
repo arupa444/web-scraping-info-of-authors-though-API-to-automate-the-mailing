@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/sending-domains", tags=["sending-domains"])
 
 def _out(d: SendingDomain) -> SendingDomainOut:
     return SendingDomainOut(
-        id=d.id, domain=d.domain, dkim_selector=d.dkim_selector,
+        id=d.id, domain=d.domain, provider=d.provider, dkim_selector=d.dkim_selector,
         spf_verified=d.spf_verified, dkim_verified=d.dkim_verified, dmarc_verified=d.dmarc_verified,
         status=d.status, smtp_host=d.smtp_host,
     )
@@ -42,6 +42,7 @@ def create_domain(body: SendingDomainIn, ctx: AuthContext = Depends(auth_context
     private_pem, dkim_txt = generate_keypair()
     d = SendingDomain(
         workspace_id=ctx.workspace.id, domain=body.domain.lower(),
+        provider=body.provider, api_key=body.api_key,
         dkim_selector="icereach", dkim_private_key=private_pem, dkim_public_key=dkim_txt,
         smtp_host=body.smtp_host, smtp_port=body.smtp_port,
         smtp_username=body.smtp_username, smtp_password=body.smtp_password,

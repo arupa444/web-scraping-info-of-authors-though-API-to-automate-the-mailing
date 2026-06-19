@@ -11,7 +11,7 @@ from ..models import Campaign, CampaignVariant
 from ..schemas.campaign import CampaignIn, CampaignOut, VariantIn, VariantOut
 from ..security.deps import AuthContext, auth_context
 from ..services import sender  # noqa: F401 — registers the send_campaign handler
-from ..services.analytics import campaign_metrics
+from ..services.analytics import campaign_metrics, variant_breakdown
 from ..services.queue import enqueue
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -89,3 +89,9 @@ def send(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSessi
 def analytics(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
     _owned(db, ctx, campaign_id)
     return campaign_metrics(db, ctx.workspace.id, campaign_id)
+
+
+@router.get("/{campaign_id}/variants")
+def variants(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    _owned(db, ctx, campaign_id)
+    return variant_breakdown(db, ctx.workspace.id, campaign_id)

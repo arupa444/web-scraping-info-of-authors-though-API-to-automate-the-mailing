@@ -19,6 +19,9 @@ class SendingDomain(Base, TimestampMixin, WorkspaceScopedMixin):
     dkim_selector: Mapped[str] = mapped_column(String(63), default="icereach", nullable=False)
     dkim_private_key: Mapped[str] = mapped_column(Text, nullable=False)
     dkim_public_key: Mapped[str] = mapped_column(Text, nullable=False)
+    # Transport provider: smtp (default) | resend | sendgrid (ESP HTTP APIs).
+    provider: Mapped[str] = mapped_column(String(20), default="smtp", nullable=False)
+    api_key: Mapped[str] = mapped_column(Text, default="", nullable=False)
     # SMTP relay used to send for this domain (Phase 1 transport).
     smtp_host: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     smtp_port: Mapped[int] = mapped_column(Integer, default=587, nullable=False)
