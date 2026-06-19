@@ -6,21 +6,20 @@
 
 ---
 
-## Status (Phase 1 — Foundation)
+## Status — Phases 1–3 built (186 backend tests green)
 
-Phase 1 is **built and tested** (168 backend tests green). It is a full vertical slice:
+**Phase 1 — Foundation:** multi-tenant workspaces/users/roles, cookie sessions + CSRF, API keys; contacts, lists, segments (JSON rule engine), background CSV/Excel import (suppression-aware); campaign compose (`{merge}` tags), DB-backed job queue + worker, reused SMTP connection per batch, **DKIM-signed** sends, open/click tracking, one-click `List-Unsubscribe`; sending-domain DKIM keygen + SPF/DKIM/DMARC verify; **DSN bounce poller** → hard/soft bounce + auto-suppression; per-campaign analytics; AI assists.
 
-- **Tenancy & auth** — workspaces, users, roles; httpOnly cookie sessions + CSRF; API keys.
-- **Audience** — contacts, lists, segments (JSON rule engine), background CSV/Excel import with validation, suppression-aware.
-- **Sending** — campaign compose (HTML + `{merge}` tags), DB-backed job queue + worker, one reused SMTP connection per batch, **DKIM-signed** messages, per-recipient open/click tracking, `List-Unsubscribe` one-click.
-- **Deliverability** — sending-domain DKIM keygen + SPF/DKIM/DMARC verify; **DSN bounce poller** → hard/soft bounce + auto-suppression.
-- **Analytics** — per-campaign sent/opens/clicks/unsubscribes/bounces. *(Honest:* `delivered` and `complaints` are **not** truthfully sourceable over SMTP, so they render as `—` until ESP integration in Phase 4.)
-- **AI** — Gemini `gemini-3-flash-preview`: subject generation, body drafting, pre-send spam/deliverability critique. Degrades gracefully without `GEMINI_API_KEY`.
+**Phase 2 — Email builder:** block document → client-safe inline-styled table HTML (heading/text/button/image/divider/spacer/columns); template library; live `<iframe>` preview (= sent output); reusable saved-blocks; DKIM-signed test sends; campaigns seedable from a template.
 
-Later phases (visual builder, automation journeys, ESP adapters + complaint/FBL + A/B, public API + signup forms, billing/quotas) are **designed** in the spec and built incrementally. See:
+**Phase 3 — Automation journeys:** enroll → `send` / `wait` / `condition` (segment filter) → done/exited; list-subscribe auto-enrollment; manual/segment enrollment; runs view; worker advances due journeys on idle ticks; AI drip-sequence drafting.
+
+**AI throughout** — Gemini `gemini-3-flash-preview`: subject generation, body drafting, pre-send spam/deliverability critique, drip-sequence drafting. Degrades gracefully (HTTP 503) without `GEMINI_API_KEY`. *(Honest:* `delivered`/`complaints` are not truthfully sourceable over SMTP, so analytics render them as `—` until ESP integration in Phase 4.)*
+
+Remaining phases (P4 ESP adapters + complaint/FBL + A/B + send-time, P5 public API + signup forms + archive, P6 billing/quotas/RBAC/audit UI) are **designed** in the spec and built incrementally. See:
 
 - Design spec (all 6 phases): [docs/superpowers/specs/2026-06-19-icereach-platform-design.md](docs/superpowers/specs/2026-06-19-icereach-platform-design.md)
-- Phase 1 plan: [docs/superpowers/plans/2026-06-19-icereach-phase1-foundation.md](docs/superpowers/plans/2026-06-19-icereach-phase1-foundation.md)
+- Phase plans: [P1](docs/superpowers/plans/2026-06-19-icereach-phase1-foundation.md) · [P2](docs/superpowers/plans/2026-06-19-icereach-phase2-builder.md) · [P3](docs/superpowers/plans/2026-06-19-icereach-phase3-automation.md)
 
 ---
 
