@@ -59,3 +59,28 @@ def test_worker_entrypoint_registers_handlers(tmp_path):
         capture_output=True, text=True, env=env, timeout=60,
     )
     assert r.returncode == 0, f"stdout:\n{r.stdout}\nstderr:\n{r.stderr}"
+
+
+def test_worker_creates_schema_when_missing(tmp_path):
+    """Worker started before the API (or against a fresh DB) must self-heal the
+    schema instead of crashing with 'no such table: jobs'."""
+    db_file = (tmp_path / "fresh.db").as_posix()  # never created/migrated
+    script = textwrap.dedent(
+        f"""
+        import os, runpy
+        os.environ["DATABASE_URL"] = "sqlite:///{db_file}"
+        os.environ["SECRET_KEY"] = "x"
+        os.environ["ICEREACH_WORKER_MAX_IDLE"] = "2"
+        os.environ["ICEREACH_WORKER_POLL"] = "0.02"
+        # No create_all here on purpose — the worker must do it itself.
+        runpy.run_module("icereach.services.queue", run_name="__main__")
+        print("worker exited cleanly")
+        """
+    )
+    env = {**os.environ, "PYTHONPATH": str(BACKEND)}
+    r = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True, text=True, env=env, timeout=60,
+    )
+    assert r.returncode == 0, f"stdout:\n{r.stdout}\nstderr:\n{r.stderr}"
+    assert "no such table" not in (r.stdout + r.stderr).lower(), r.stderr

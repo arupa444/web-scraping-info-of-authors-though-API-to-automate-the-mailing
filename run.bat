@@ -66,7 +66,19 @@ exit /b 0
 pushd frontend && call npm install && call npm run build & popd
 exit /b 0
 
+:stopprocs
+taskkill /fi "WINDOWTITLE eq iceReach-Worker*" /t /f >nul 2>&1 && echo Stopped worker. || echo Worker not running.
+taskkill /fi "WINDOWTITLE eq iceReach-API*" /t /f >nul 2>&1 && echo Stopped API. || echo API not running.
+exit /b 0
+
+:freeport
+rem Kill whatever is holding %PORT% (catches a stale server we didn't start).
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr LISTENING ^| findstr ":%PORT% "') do taskkill /f /pid %%p >nul 2>&1
+exit /b 0
+
 :full
+call :stopprocs
+call :freeport
 call :startapi
 call :startworker
 echo Waiting for the API...
@@ -104,12 +116,11 @@ if /i "%~2"=="worker" (
 goto :end
 
 :stop
-taskkill /fi "WINDOWTITLE eq iceReach-Worker*" /t /f >nul 2>&1 && echo Stopped worker. || echo Worker not running.
-taskkill /fi "WINDOWTITLE eq iceReach-API*" /t /f >nul 2>&1 && echo Stopped API. || echo API not running.
+call :stopprocs
 goto :end
 
 :restart
-call :stop
+call :stopprocs
 timeout /t 1 >nul
 goto :full
 

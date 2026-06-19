@@ -54,6 +54,19 @@ open_url() {
   fi
 }
 
+# Kill whatever is holding $PORT — catches a stale server this script didn't
+# start (e.g. an old `python run.py`) so `full` always gets a clean port.
+free_port() {
+  command -v lsof >/dev/null 2>&1 || return 0
+  local pids; pids="$(lsof -ti tcp:"$PORT" 2>/dev/null || true)"
+  [ -z "$pids" ] && return 0
+  c_dim "Port $PORT busy (pids: $pids) — freeing it."
+  kill $pids 2>/dev/null || true
+  sleep 1
+  pids="$(lsof -ti tcp:"$PORT" 2>/dev/null || true)"
+  [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
+}
+
 start_api() {
   require_venv
   if is_running "$API_PID"; then c_dim "API already running (pid $(cat "$API_PID"))."; return; fi
@@ -89,6 +102,10 @@ build_spa() {
 }
 
 cmd_full() {
+  # Always start from a clean slate: stop anything we started, then free the
+  # port from any stale server before launching.
+  cmd_stop
+  free_port
   start_api
   start_worker
   wait_health || true

@@ -171,6 +171,13 @@ def main() -> None:
     from . import dsn, importer, sender  # noqa: F401 — register handlers on import
     from . import automation
 
+    # Dev convenience, mirroring the API: ensure the schema exists so the worker
+    # doesn't crash with "no such table: jobs" when it starts before the API (or
+    # against a fresh DB). Production uses Alembic; create_all is a no-op once the
+    # tables are there. Importing the handlers above pulls in every model first.
+    from ..db import Base, engine
+    Base.metadata.create_all(engine)
+
     # Advance automation journeys at most every ~30s on idle cycles.
     _last = [0.0]
 
