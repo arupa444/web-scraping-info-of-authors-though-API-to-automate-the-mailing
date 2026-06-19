@@ -1173,3 +1173,17 @@ textarea.code,
     grid-template-columns: 1fr;
   }
 }
+
+/* Inline checkbox row (e.g. "Verify TLS certificate") */
+.field-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+  font-size: 0.9rem;
+  color: var(--muted, #475569);
+}
+.field-check input {
+  width: auto;
+  margin: 0;
+}

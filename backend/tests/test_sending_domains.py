@@ -27,6 +27,15 @@ def test_create_returns_three_dns_records():
     assert "_domainkey" in hosts and "_dmarc" in hosts
 
 
+def test_verify_tls_defaults_true_and_can_opt_out():
+    c = _client("sdt@x.com", "SDT")
+    h = _csrf(c)
+    d1 = c.post("/api/sending-domains", json={"domain": "a.acme.com", "smtp_host": "smtp.acme.com"}, headers=h).json()["domain"]
+    assert d1["verify_tls"] is True  # secure default
+    d2 = c.post("/api/sending-domains", json={"domain": "b.acme.com", "smtp_host": "mail.internal", "verify_tls": False}, headers=h).json()["domain"]
+    assert d2["verify_tls"] is False
+
+
 def test_verify_flips_flags(monkeypatch):
     c = _client("sd2@x.com", "SD2")
     monkeypatch.setattr(sending_domains, "verify_spf", lambda *a, **k: True)

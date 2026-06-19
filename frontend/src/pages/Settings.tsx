@@ -36,6 +36,25 @@ import {
   errMessage,
 } from "../components/ui";
 
+// Common SMTP relays for the dropdown. The host/port fields stay fully editable,
+// and a "Custom…" option lets users enter any other server. Add more here freely.
+const SMTP_PRESETS: { label: string; host: string; port: number }[] = [
+  { label: "Zoho Mail (India · smtp.zoho.in)", host: "smtp.zoho.in", port: 587 },
+  { label: "Zoho Mail (Global · smtp.zoho.com)", host: "smtp.zoho.com", port: 587 },
+  { label: "Zoho Mail (EU · smtp.zoho.eu)", host: "smtp.zoho.eu", port: 587 },
+  { label: "Gmail / Google Workspace", host: "smtp.gmail.com", port: 587 },
+  { label: "Outlook / Microsoft 365", host: "smtp.office365.com", port: 587 },
+  { label: "Yahoo Mail", host: "smtp.mail.yahoo.com", port: 587 },
+  { label: "Amazon SES (us-east-1)", host: "email-smtp.us-east-1.amazonaws.com", port: 587 },
+  { label: "Amazon SES (eu-west-1)", host: "email-smtp.eu-west-1.amazonaws.com", port: 587 },
+  { label: "Mailgun", host: "smtp.mailgun.org", port: 587 },
+  { label: "SendGrid (SMTP)", host: "smtp.sendgrid.net", port: 587 },
+  { label: "Brevo (Sendinblue)", host: "smtp-relay.brevo.com", port: 587 },
+  { label: "Postmark", host: "smtp.postmarkapp.com", port: 587 },
+  { label: "Mailjet", host: "in-v3.mailjet.com", port: 587 },
+  { label: "iCloud Mail", host: "smtp.mail.me.com", port: 587 },
+];
+
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -73,10 +92,11 @@ function SendingDomains() {
   const [domain, setDomain] = useState("");
   const [provider, setProvider] = useState<SendingProvider>("smtp");
   const [apiKey, setApiKey] = useState("");
-  const [smtpHost, setSmtpHost] = useState("");
-  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpHost, setSmtpHost] = useState(SMTP_PRESETS[0].host);
+  const [smtpPort, setSmtpPort] = useState(String(SMTP_PRESETS[0].port));
   const [smtpUser, setSmtpUser] = useState("");
   const [smtpPass, setSmtpPass] = useState("");
+  const [verifyTls, setVerifyTls] = useState(true);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -113,6 +133,7 @@ function SendingDomains() {
         smtp_port: !usesApiKey && smtpPort ? Number(smtpPort) : undefined,
         smtp_username: !usesApiKey ? smtpUser || undefined : undefined,
         smtp_password: !usesApiKey ? smtpPass || undefined : undefined,
+        verify_tls: verifyTls,
       });
       setDomains((prev) => [...prev, res.domain]);
       setRecords((prev) => ({ ...prev, [res.domain.id]: res.records }));
@@ -195,9 +216,31 @@ function SendingDomains() {
           </label>
         ) : (
           <>
+            <label className="field">
+              <span>SMTP provider</span>
+              <select
+                value={SMTP_PRESETS.find((p) => p.host === smtpHost)?.host ?? "custom"}
+                onChange={(e) => {
+                  const preset = SMTP_PRESETS.find((p) => p.host === e.target.value);
+                  if (preset) {
+                    setSmtpHost(preset.host);
+                    setSmtpPort(String(preset.port));
+                  } else {
+                    setSmtpHost(""); // Custom — type your own host/port below
+                  }
+                }}
+              >
+                {SMTP_PRESETS.map((p) => (
+                  <option key={p.host} value={p.host}>
+                    {p.label}
+                  </option>
+                ))}
+                <option value="custom">Custom / other…</option>
+              </select>
+            </label>
             <div className="field-row">
               <label className="field">
-                <span>SMTP host (optional relay)</span>
+                <span>SMTP host</span>
                 <input
                   value={smtpHost}
                   onChange={(e) => setSmtpHost(e.target.value)}
@@ -232,6 +275,14 @@ function SendingDomains() {
                 />
               </label>
             </div>
+            <label className="field-check">
+              <input
+                type="checkbox"
+                checked={verifyTls}
+                onChange={(e) => setVerifyTls(e.target.checked)}
+              />
+              <span>Verify TLS certificate (recommended; uncheck only for a trusted self-signed relay)</span>
+            </label>
           </>
         )}
         <button className="btn btn-primary" disabled={adding}>

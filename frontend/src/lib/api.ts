@@ -250,6 +250,7 @@ export interface SendingDomain {
   smtp_host?: string | null;
   smtp_port?: number | null;
   smtp_username?: string | null;
+  verify_tls?: boolean;
 }
 export interface SendingDomainIn {
   domain: string;
@@ -259,6 +260,7 @@ export interface SendingDomainIn {
   smtp_port?: number;
   smtp_username?: string;
   smtp_password?: string;
+  verify_tls?: boolean;
 }
 export interface SendingDomainCreated {
   domain: SendingDomain;
