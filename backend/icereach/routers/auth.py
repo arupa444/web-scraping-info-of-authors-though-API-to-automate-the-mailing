@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -95,5 +95,15 @@ def logout(response: Response, ctx: AuthContext = Depends(auth_context), db: DbS
 
 
 @router.get("/me", response_model=MeOut)
-def me(ctx: AuthContext = Depends(auth_context)):
+def me(request: Request, response: Response, ctx: AuthContext = Depends(auth_context)):
+    # Self-heal CSRF: if the cookie is missing or its signature is stale (server
+    # restart / SECRET_KEY change), re-issue one signed with the CURRENT secret so
+    # mutations don't wedge on "CSRF validation failed". If it's already valid,
+    # leave it untouched (stable value for the double-submit check).
+    current = request.cookies.get(settings.csrf_cookie)
+    if not current or not sessions.verify_csrf(current):
+        response.set_cookie(
+            settings.csrf_cookie, sessions.issue_csrf(), httponly=False, samesite="lax",
+            secure=False, max_age=settings.session_max_age, path="/",
+        )
     return _me(ctx.user, ctx.workspace, ctx.membership.role)

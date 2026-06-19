@@ -57,6 +57,20 @@ def test_csrf_required_for_mutations():
     assert r.status_code == 201, r.text
 
 
+def test_me_reissues_stale_or_missing_csrf():
+    c = _client()
+    c.post("/api/auth/signup", json={"email": "csrf@x.com", "password": "supersecret", "workspace_name": "C"})
+    # Simulate a stale/missing CSRF cookie (e.g. after a SECRET_KEY change).
+    c.cookies.delete(settings.csrf_cookie)
+    # A mutation now fails (no CSRF cookie to match).
+    assert c.post("/api/api-keys", json={"name": "k"}).status_code == 403
+    # Loading /me self-heals: it re-issues a valid CSRF cookie.
+    assert c.get("/api/auth/me").status_code == 200
+    assert c.cookies.get(settings.csrf_cookie)
+    # The mutation now succeeds with the refreshed token.
+    assert c.post("/api/api-keys", json={"name": "k"}, headers=_csrf_headers(c)).status_code == 201
+
+
 def test_duplicate_email_409():
     c = _client()
     c.post("/api/auth/signup", json={"email": "f@x.com", "password": "supersecret", "workspace_name": "F"})
