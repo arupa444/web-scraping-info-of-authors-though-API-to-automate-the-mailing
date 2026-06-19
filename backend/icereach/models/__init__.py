@@ -2,6 +2,7 @@
 
 from .automation import Automation, AutomationRun, AutomationStep
 from .contact import Contact, ContactList, ListMembership, Segment, Suppression
+from .growth import OutboundWebhook, SignupForm
 from .job import AIUsage, AuditLog, Job
 from .sending import (
     Campaign,
@@ -19,5 +20,6 @@ __all__ = [
     "Contact", "ContactList", "ListMembership", "Segment", "Suppression",
     "SendingDomain", "Template", "SavedBlock", "Campaign", "CampaignVariant", "Message", "Event",
     "Automation", "AutomationStep", "AutomationRun",
+    "SignupForm", "OutboundWebhook",
     "Job", "AuditLog", "AIUsage",
 ]

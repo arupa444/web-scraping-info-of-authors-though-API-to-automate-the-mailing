@@ -95,3 +95,14 @@ def analytics(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: Db
 def variants(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
     _owned(db, ctx, campaign_id)
     return variant_breakdown(db, ctx.workspace.id, campaign_id)
+
+
+@router.post("/{campaign_id}/analytics/narrative")
+def analytics_narrative(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    _owned(db, ctx, campaign_id)
+    from ..ai import service as ai_service
+    metrics = campaign_metrics(db, ctx.workspace.id, campaign_id)
+    try:
+        return ai_service.summarize_analytics(metrics)
+    except ai_service.AIDisabled as exc:
+        raise HTTPException(status_code=503, detail=str(exc))

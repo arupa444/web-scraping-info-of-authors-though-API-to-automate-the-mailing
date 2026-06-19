@@ -119,3 +119,15 @@ def sequence_prompt(goal: str, steps: int = 3) -> str:
         "Return no prose outside the JSON.\n\n"
         f"{_delimit('goal', goal)}"
     )
+
+
+def analytics_prompt(metrics_json: str) -> str:
+    """Build the prompt for :func:`icereach.ai.service.summarize_analytics`."""
+    return (
+        "You are an email analytics advisor. Given the campaign metrics below, write a "
+        "concise, plain-language performance summary and concrete next actions. Do not "
+        "invent numbers beyond the data; treat null metrics as 'not available'.\n"
+        'Respond with JSON only: an object with the keys "summary" (2-4 sentences) and '
+        '"highlights" (an array of short bullet strings). Return no prose outside the JSON.\n\n'
+        f"{_delimit('metrics', metrics_json)}"
+    )

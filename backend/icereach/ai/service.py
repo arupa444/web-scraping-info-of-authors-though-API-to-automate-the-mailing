@@ -196,6 +196,24 @@ def critique_deliverability(subject: str, html: str) -> dict:
     }
 
 
+def summarize_analytics(metrics: dict) -> dict:
+    """Plain-language narrative of campaign metrics → {summary, highlights}.
+
+    Raises:
+        AIDisabled: if AI is not enabled.
+    """
+    if not is_enabled():
+        raise AIDisabled("AI is disabled: GEMINI_API_KEY is not set")
+    import json as _json
+    prompt = prompts.analytics_prompt(_json.dumps(metrics))
+    raw = _generate_json(prompt, temperature=0.3, max_output_tokens=600)
+    data = raw if isinstance(raw, dict) else {}
+    return {
+        "summary": str(data.get("summary", "")),
+        "highlights": [str(x) for x in (data.get("highlights") or [])],
+    }
+
+
 def draft_sequence(goal: str, steps: int = 3) -> list[dict]:
     """Draft a multi-email drip sequence for a goal.
 
