@@ -65,3 +65,14 @@ def test_jobs_endpoint_scoped():
     assert r.status_code == 200
     assert r.json()["status"] == "done"
     assert r.json()["result"] == {"ok": True}
+
+
+def test_list_variables_includes_standard_and_attribute_keys():
+    c = _signup("vars@x.com", "VARS")
+    h = _csrf(c)
+    cid = c.post("/api/contacts", json={"email": "a@x.com", "name": "A", "attributes": {"company": "Acme", "plan": "pro"}}, headers=h).json()["id"]
+    lid = c.post("/api/lists", json={"name": "L"}, headers=h).json()["id"]
+    c.post(f"/api/lists/{lid}/contacts", json={"contact_ids": [cid]}, headers=h)
+    v = c.get(f"/api/lists/{lid}/variables").json()
+    assert v["standard"] == ["name", "email"]
+    assert v["attributes"] == ["company", "plan"]

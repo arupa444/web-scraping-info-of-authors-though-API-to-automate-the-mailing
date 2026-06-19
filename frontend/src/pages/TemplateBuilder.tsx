@@ -13,11 +13,15 @@ import {
   type ColumnsBlock,
   type HeadingBlock,
   type ImageBlock,
+  type List,
+  type ListBlock,
+  type QuoteBlock,
   type SendingDomain,
   type SpacerBlock,
   type TextBlock,
   api,
 } from "../lib/api";
+import { ApiError } from "../lib/api";
 import {
   Card,
   ErrorBanner,
@@ -37,6 +41,8 @@ const PALETTE: { type: BlockType; label: string }[] = [
   { type: "text", label: "Text" },
   { type: "button", label: "Button" },
   { type: "image", label: "Image" },
+  { type: "list", label: "Bulleted list" },
+  { type: "quote", label: "Quote" },
   { type: "divider", label: "Divider" },
   { type: "spacer", label: "Spacer" },
   { type: "columns", label: "Two columns" },
@@ -47,6 +53,8 @@ const BLOCK_LABELS: Record<BlockType, string> = {
   text: "Text",
   button: "Button",
   image: "Image",
+  list: "Bulleted list",
+  quote: "Quote",
   divider: "Divider",
   spacer: "Spacer",
   columns: "Two columns",
@@ -67,6 +75,10 @@ function newBlock(type: BlockType): Block {
       };
     case "image":
       return { type: "image", src: "", alt: "", width: 600 };
+    case "list":
+      return { type: "list", items: ["First item", "Second item"], ordered: false, align: "left" };
+    case "quote":
+      return { type: "quote", text: "A memorable quote.", cite: "", align: "left" };
     case "divider":
       return { type: "divider" };
     case "spacer":
@@ -267,6 +279,73 @@ function BlockEditor({
               placeholder="https://…"
             />
           </label>
+        </div>
+      );
+    }
+    case "list": {
+      const b = block as ListBlock;
+      return (
+        <div className="form">
+          <label className="field">
+            <span>Items (one per line)</span>
+            <textarea
+              className="code"
+              rows={nested ? 3 : 4}
+              value={b.items.join("\n")}
+              onChange={(e) =>
+                onChange({ ...b, items: e.target.value.split("\n") })
+              }
+            />
+          </label>
+          <div className="field-row">
+            <label className="field">
+              <span>Style</span>
+              <select
+                value={b.ordered ? "ordered" : "bulleted"}
+                onChange={(e) =>
+                  onChange({ ...b, ordered: e.target.value === "ordered" })
+                }
+              >
+                <option value="bulleted">Bulleted</option>
+                <option value="ordered">Numbered</option>
+              </select>
+            </label>
+            <AlignField
+              value={b.align}
+              onChange={(align) => onChange({ ...b, align })}
+            />
+          </div>
+        </div>
+      );
+    }
+    case "quote": {
+      const b = block as QuoteBlock;
+      return (
+        <div className="form">
+          <label className="field">
+            <span>Quote</span>
+            <textarea
+              rows={nested ? 2 : 3}
+              value={b.text}
+              onChange={(e) => onChange({ ...b, text: e.target.value })}
+            />
+          </label>
+          <div className="field-row">
+            <label className="field">
+              <span>Attribution (optional)</span>
+              <input
+                value={b.cite ?? ""}
+                onChange={(e) =>
+                  onChange({ ...b, cite: e.target.value || undefined })
+                }
+                placeholder="Jane Doe, CEO"
+              />
+            </label>
+            <AlignField
+              value={b.align}
+              onChange={(align) => onChange({ ...b, align })}
+            />
+          </div>
         </div>
       );
     }
@@ -626,7 +705,28 @@ export default function TemplateBuilder() {
   const [notice, setNotice] = useState<string | null>(null);
   const [showTestSend, setShowTestSend] = useState(false);
 
+  // AI generate (#3)
+  const [aiBrief, setAiBrief] = useState("");
+  const [aiTone, setAiTone] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  // List-aware merge variables (#5)
+  const [lists, setLists] = useState<List[]>([]);
+  const [varListId, setVarListId] = useState("");
+  const [vars, setVars] = useState<{ standard: string[]; attributes: string[] }>({
+    standard: ["name", "email"],
+    attributes: [],
+  });
+  const [varNotice, setVarNotice] = useState<string | null>(null);
+  // The last focused subject/block field, so a clicked variable lands there.
+  const lastField = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+
   const dragIndex = useRef<number | null>(null);
+
+  useEffect(() => {
+    api.get<List[]>("/api/lists").then(setLists).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (isNew) return;
@@ -660,6 +760,85 @@ export default function TemplateBuilder() {
     dragIndex.current = null;
     if (from === null || from === index) return;
     move(from, index);
+  }
+
+  // Track the last focused text field so a clicked variable inserts there.
+  function rememberFocus(e: React.FocusEvent) {
+    const t = e.target as HTMLElement;
+    if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) {
+      lastField.current = t;
+    }
+  }
+
+  function insertVariable(token: string) {
+    const el = lastField.current;
+    if (!el) {
+      navigator.clipboard?.writeText(token).catch(() => {});
+      setVarNotice(`Copied ${token} — click a field then a variable to insert it directly.`);
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const next = el.value.slice(0, start) + token + el.value.slice(end);
+    // Set via the native setter + dispatch 'input' so React's onChange fires.
+    const proto =
+      el instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, next);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    const pos = start + token.length;
+    requestAnimationFrame(() => {
+      el.focus();
+      try {
+        el.setSelectionRange(pos, pos);
+      } catch {
+        /* some input types disallow selection range */
+      }
+    });
+    setVarNotice(null);
+  }
+
+  async function onPickVarList(id: string) {
+    setVarListId(id);
+    setVarNotice(null);
+    if (!id) {
+      setVars({ standard: ["name", "email"], attributes: [] });
+      return;
+    }
+    try {
+      const v = await api.get<{ standard: string[]; attributes: string[] }>(
+        `/api/lists/${id}/variables`,
+      );
+      setVars(v);
+    } catch (err) {
+      setVarNotice(errMessage(err));
+    }
+  }
+
+  async function onGenerateAI() {
+    if (!aiBrief.trim()) {
+      setAiError("Describe what the email should say first.");
+      return;
+    }
+    setAiError(null);
+    setAiBusy(true);
+    try {
+      const res = await api.post<{ html: string; text: string }>("/api/ai/body", {
+        brief: aiBrief,
+        tone: aiTone || undefined,
+      });
+      setBlocks((prev) => [...prev, { type: "text", html: res.html, align: "left" }]);
+      setNotice("AI draft added as a Text block below — edit it freely.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 503) {
+        setAiError("AI is not configured (set GEMINI_API_KEY).");
+      } else {
+        setAiError(errMessage(err));
+      }
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   async function onSave(e: FormEvent) {
@@ -708,7 +887,7 @@ export default function TemplateBuilder() {
   }
 
   return (
-    <div>
+    <div onFocusCapture={rememberFocus}>
       <PageHeader
         title={savedId !== null ? "Edit template" : "New template"}
         subtitle="Compose your email from blocks and preview it live."
@@ -779,6 +958,81 @@ export default function TemplateBuilder() {
           </label>
         </div>
       </Card>
+
+      <div className="grid-2">
+        <Card
+          title="Write with AI"
+          actions={
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={aiBusy}
+              onClick={onGenerateAI}
+            >
+              {aiBusy ? "Generating…" : "Generate draft"}
+            </button>
+          }
+        >
+          <ErrorBanner message={aiError} />
+          <div className="form">
+            <label className="field">
+              <span>What should this email say?</span>
+              <textarea
+                rows={2}
+                value={aiBrief}
+                onChange={(e) => setAiBrief(e.target.value)}
+                placeholder="e.g. Announce our spring sale: 20% off all plans until April 30, with a Shop now button."
+              />
+            </label>
+            <label className="field">
+              <span>Tone (optional)</span>
+              <input
+                value={aiTone}
+                onChange={(e) => setAiTone(e.target.value)}
+                placeholder="friendly, professional, playful…"
+              />
+            </label>
+            <span className="muted small">
+              The draft is added as an editable Text block below.
+            </span>
+          </div>
+        </Card>
+
+        <Card title="Personalize">
+          <div className="form">
+            <label className="field">
+              <span>Variables for list</span>
+              <select value={varListId} onChange={(e) => onPickVarList(e.target.value)}>
+                <option value="">— Standard fields only —</option>
+                {lists.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="muted small">
+              Click a field (subject or any block), then a variable to insert it
+              at the cursor. Recipients see their own value.
+            </span>
+            <div className="palette-list" style={{ flexDirection: "row", flexWrap: "wrap", gap: "6px" }}>
+              {[...vars.standard, ...vars.attributes].map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="chip"
+                  title={`Insert {${key}}`}
+                  onMouseDown={(e) => e.preventDefault() /* keep field focus */}
+                  onClick={() => insertVariable(`{${key}}`)}
+                >
+                  {`{${key}}`}
+                </button>
+              ))}
+            </div>
+            {varNotice ? <span className="muted small">{varNotice}</span> : null}
+          </div>
+        </Card>
+      </div>
 
       <div className="builder-grid">
         <aside className="builder-palette">

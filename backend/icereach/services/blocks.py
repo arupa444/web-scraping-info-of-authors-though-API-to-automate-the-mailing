@@ -69,6 +69,33 @@ def _image(b: dict) -> str:
     return f'<div style="text-align:{_align(b)};">{img}</div>'
 
 
+def _list(b: dict) -> str:
+    items = b.get("items") or []
+    tag = "ol" if b.get("ordered") else "ul"
+    lis = "".join(
+        f'<li style="margin:4px 0;">{escape(str(it))}</li>'
+        for it in items if str(it).strip()
+    )
+    return (
+        f'<{tag} style="margin:0;padding-left:22px;font-family:{_FONT};font-size:16px;'
+        f'line-height:1.6;color:{_TEXT_COLOR};text-align:{_align(b)};">{lis}</{tag}>'
+    )
+
+
+def _quote(b: dict) -> str:
+    text = escape(str(b.get("text", "")))
+    cite = escape(str(b.get("cite", "")))
+    cite_html = (
+        f'<div style="margin-top:8px;font-size:14px;color:#6b7280;font-style:normal;">— {cite}</div>'
+        if cite else ""
+    )
+    return (
+        f'<blockquote style="margin:0;padding:12px 18px;border-left:4px solid #2563eb;'
+        f'background:#f9fafb;font-family:{_FONT};font-size:16px;line-height:1.6;'
+        f'color:{_TEXT_COLOR};font-style:italic;text-align:{_align(b)};">{text}{cite_html}</blockquote>'
+    )
+
+
 def _divider(b: dict) -> str:
     return '<div style="border-top:1px solid #e5e7eb;font-size:0;line-height:0;">&nbsp;</div>'
 
@@ -98,6 +125,8 @@ _RENDERERS = {
     "text": _text,
     "button": _button,
     "image": _image,
+    "list": _list,
+    "quote": _quote,
     "divider": _divider,
     "spacer": _spacer,
     "columns": _columns,

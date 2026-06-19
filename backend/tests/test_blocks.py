@@ -18,6 +18,18 @@ def test_renders_container_and_blocks():
     assert "height:32px" in html
 
 
+def test_list_and_quote_blocks_render():
+    html = render_blocks([
+        {"type": "list", "items": ["One", "Two", ""], "ordered": False},
+        {"type": "list", "items": ["A"], "ordered": True},
+        {"type": "quote", "text": "Be bold {name}", "cite": "Jane"},
+    ])
+    assert "<ul" in html and "<li" in html
+    assert "<ol" in html
+    assert "One" in html and "Two" in html
+    assert "<blockquote" in html and "Be bold {name}" in html and "Jane" in html
+
+
 def test_columns_render_two_cells():
     html = render_blocks([
         {"type": "columns", "columns": [

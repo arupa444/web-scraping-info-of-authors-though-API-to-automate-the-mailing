@@ -42,6 +42,24 @@ def list_lists(ctx: AuthContext = Depends(auth_context), db: DbSession = Depends
     return [_out(x) for x in rows]
 
 
+@router.get("/{list_id}/variables")
+def list_variables(list_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    """Merge variables usable for this list: the standard fields plus the union
+    of custom attribute keys across the list's contacts. Powers the template
+    builder's personalization suggestions."""
+    _get_owned(db, ctx, list_id)
+    rows = db.scalars(
+        select(Contact)
+        .join(ListMembership, ListMembership.contact_id == Contact.id)
+        .where(ListMembership.list_id == list_id, Contact.workspace_id == ctx.workspace.id)
+    ).all()
+    keys: set[str] = set()
+    for c in rows:
+        for k in (c.attributes or {}).keys():
+            keys.add(str(k))
+    return {"standard": ["name", "email"], "attributes": sorted(keys)}
+
+
 @router.post("/{list_id}/contacts", status_code=status.HTTP_200_OK)
 def add_contacts(list_id: int, body: ListAddIn, ctx: AuthContext = Depends(auth_context),
                  db: DbSession = Depends(get_db)):

@@ -309,6 +309,18 @@ export interface ImageBlock {
   href?: string;
   width?: number;
 }
+export interface ListBlock {
+  type: "list";
+  items: string[];
+  ordered?: boolean;
+  align?: BlockAlign;
+}
+export interface QuoteBlock {
+  type: "quote";
+  text: string;
+  cite?: string;
+  align?: BlockAlign;
+}
 export interface DividerBlock {
   type: "divider";
 }
@@ -326,6 +338,8 @@ export type Block =
   | TextBlock
   | ButtonBlock
   | ImageBlock
+  | ListBlock
+  | QuoteBlock
   | DividerBlock
   | SpacerBlock
   | ColumnsBlock;
