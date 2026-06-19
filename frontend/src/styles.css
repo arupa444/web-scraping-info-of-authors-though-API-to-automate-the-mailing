@@ -653,7 +653,8 @@ textarea.code,
   border-color: #a7f3d0;
 }
 .pill-draft,
-.pill-queued {
+.pill-queued,
+.pill-paused {
   background: #fff7ed;
   color: var(--warning);
   border-color: #fed7aa;

@@ -410,6 +410,100 @@ export interface AiCritiqueOut {
 }
 
 // ---------------------------------------------------------------------------
+// Automations (Phase 3 journeys)
+// ---------------------------------------------------------------------------
+
+export type AutomationStatus = "draft" | "active" | "paused";
+export type TriggerType = "manual" | "list_subscribe";
+export type StepType = "send" | "wait" | "condition";
+
+export interface AutomationStep {
+  id?: number;
+  position?: number;
+  type: StepType;
+  config: Record<string, unknown>;
+}
+
+export interface Automation {
+  id: number;
+  name: string;
+  status: AutomationStatus;
+  trigger_type: TriggerType;
+  trigger_list_id?: number | null;
+  sending_domain_id?: number | null;
+  from_name: string;
+  from_email: string;
+  steps: AutomationStep[];
+}
+
+export interface AutomationIn {
+  name: string;
+  trigger_type: TriggerType;
+  trigger_list_id?: number | null;
+  sending_domain_id?: number | null;
+  from_name: string;
+  from_email: string;
+  steps: AutomationStep[];
+}
+
+export interface AutomationRun {
+  id: number;
+  contact_id: number;
+  position: number;
+  status: string;
+  next_run_at: string | null;
+  last_error: string | null;
+}
+
+export interface EnrollIn {
+  contact_ids?: number[];
+  segment_id?: number;
+}
+export interface EnrollOut {
+  enrolled: number;
+}
+
+export interface AiSequenceEmail {
+  subject: string;
+  html: string;
+  wait_days: number;
+}
+export interface AiSequenceOut {
+  emails: AiSequenceEmail[];
+}
+
+export function listAutomations() {
+  return api.get<Automation[]>("/api/automations");
+}
+export function getAutomation(id: number | string) {
+  return api.get<Automation>(`/api/automations/${id}`);
+}
+export function createAutomation(input: AutomationIn) {
+  return api.post<Automation>("/api/automations", input);
+}
+export function updateAutomation(id: number | string, input: AutomationIn) {
+  return api.put<Automation>(`/api/automations/${id}`, input);
+}
+export function deleteAutomation(id: number | string) {
+  return api.del<void>(`/api/automations/${id}`);
+}
+export function activateAutomation(id: number | string) {
+  return api.post<Automation>(`/api/automations/${id}/activate`);
+}
+export function pauseAutomation(id: number | string) {
+  return api.post<Automation>(`/api/automations/${id}/pause`);
+}
+export function enrollAutomation(id: number | string, input: EnrollIn) {
+  return api.post<EnrollOut>(`/api/automations/${id}/enroll`, input);
+}
+export function getAutomationRuns(id: number | string) {
+  return api.get<AutomationRun[]>(`/api/automations/${id}/runs`);
+}
+export function draftSequence(goal: string, steps: number) {
+  return api.post<AiSequenceOut>("/api/ai/sequence", { goal, steps });
+}
+
+// ---------------------------------------------------------------------------
 // Job polling
 // ---------------------------------------------------------------------------
 

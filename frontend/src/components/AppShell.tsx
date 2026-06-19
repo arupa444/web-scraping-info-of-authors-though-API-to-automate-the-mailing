@@ -8,6 +8,7 @@ const NAV = [
   { to: "/segments", label: "Segments" },
   { to: "/campaigns", label: "Campaigns" },
   { to: "/templates", label: "Templates" },
+  { to: "/automations", label: "Automations" },
   { to: "/settings", label: "Settings" },
 ];
 

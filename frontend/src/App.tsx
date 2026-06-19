@@ -13,6 +13,8 @@ import CampaignNew from "./pages/CampaignNew";
 import CampaignAnalytics from "./pages/CampaignAnalytics";
 import Templates from "./pages/Templates";
 import TemplateBuilder from "./pages/TemplateBuilder";
+import Automations from "./pages/Automations";
+import AutomationBuilder from "./pages/AutomationBuilder";
 import Settings from "./pages/Settings";
 
 export default function App() {
@@ -52,6 +54,9 @@ export default function App() {
         <Route path="/templates" element={<Templates />} />
         <Route path="/templates/new" element={<TemplateBuilder />} />
         <Route path="/templates/:id" element={<TemplateBuilder />} />
+        <Route path="/automations" element={<Automations />} />
+        <Route path="/automations/new" element={<AutomationBuilder />} />
+        <Route path="/automations/:id" element={<AutomationBuilder />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 
