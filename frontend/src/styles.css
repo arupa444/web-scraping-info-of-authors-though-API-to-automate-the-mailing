@@ -1101,6 +1101,29 @@ textarea.code,
   background: #fff;
 }
 
+/* ---------- A/B variant blocks (campaign composer) ---------- */
+.variant-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.variant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ---------- Settings tabs ---------- */
+.mt-tabs {
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .builder-grid {

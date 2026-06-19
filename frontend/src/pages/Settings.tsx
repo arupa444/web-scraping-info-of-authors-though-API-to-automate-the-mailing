@@ -1,11 +1,29 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useAuth } from "../auth/AuthContext";
 import {
+  ApiError,
   api,
+  checkout,
+  createMember,
+  createOutboundWebhook,
+  deleteMember,
+  deleteOutboundWebhook,
+  getBilling,
+  getPlans,
+  listAuditLogs,
+  listMembers,
+  listOutboundWebhooks,
   type ApiKey,
   type ApiKeyCreated,
+  type AuditLog,
+  type Billing,
+  type BillingPlan,
   type DnsRecord,
+  type Member,
+  type OutboundWebhook,
   type SendingDomain,
   type SendingDomainCreated,
+  type SendingProvider,
 } from "../lib/api";
 import {
   Card,
@@ -53,6 +71,8 @@ function SendingDomains() {
   const [error, setError] = useState<string | null>(null);
 
   const [domain, setDomain] = useState("");
+  const [provider, setProvider] = useState<SendingProvider>("smtp");
+  const [apiKey, setApiKey] = useState("");
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("587");
   const [smtpUser, setSmtpUser] = useState("");
@@ -62,6 +82,8 @@ function SendingDomains() {
 
   const [records, setRecords] = useState<Record<number, DnsRecord[]>>({});
   const [verifyBusy, setVerifyBusy] = useState<number | null>(null);
+
+  const usesApiKey = provider === "resend" || provider === "sendgrid";
 
   async function load() {
     try {
@@ -85,14 +107,17 @@ function SendingDomains() {
     try {
       const res = await api.post<SendingDomainCreated>("/api/sending-domains", {
         domain,
-        smtp_host: smtpHost || undefined,
-        smtp_port: smtpPort ? Number(smtpPort) : undefined,
-        smtp_username: smtpUser || undefined,
-        smtp_password: smtpPass || undefined,
+        provider,
+        api_key: usesApiKey ? apiKey || undefined : undefined,
+        smtp_host: !usesApiKey ? smtpHost || undefined : undefined,
+        smtp_port: !usesApiKey && smtpPort ? Number(smtpPort) : undefined,
+        smtp_username: !usesApiKey ? smtpUser || undefined : undefined,
+        smtp_password: !usesApiKey ? smtpPass || undefined : undefined,
       });
       setDomains((prev) => [...prev, res.domain]);
       setRecords((prev) => ({ ...prev, [res.domain.id]: res.records }));
       setDomain("");
+      setApiKey("");
       setSmtpHost("");
       setSmtpUser("");
       setSmtpPass("");
@@ -134,52 +159,81 @@ function SendingDomains() {
       <ErrorBanner message={addError} />
 
       <form onSubmit={onAdd} className="form">
-        <label className="field">
-          <span>Domain</span>
-          <input
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            placeholder="mail.acme.com"
-            required
-          />
-        </label>
         <div className="field-row">
           <label className="field">
-            <span>SMTP host (optional relay)</span>
+            <span>Domain</span>
             <input
-              value={smtpHost}
-              onChange={(e) => setSmtpHost(e.target.value)}
-              placeholder="smtp.provider.com"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="mail.acme.com"
+              required
             />
           </label>
           <label className="field">
-            <span>SMTP port</span>
-            <input
-              type="number"
-              value={smtpPort}
-              onChange={(e) => setSmtpPort(e.target.value)}
-            />
+            <span>Provider</span>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as SendingProvider)}
+            >
+              <option value="smtp">SMTP</option>
+              <option value="resend">Resend</option>
+              <option value="sendgrid">SendGrid</option>
+            </select>
           </label>
         </div>
-        <div className="field-row">
+
+        {usesApiKey ? (
           <label className="field">
-            <span>SMTP username</span>
-            <input
-              value={smtpUser}
-              onChange={(e) => setSmtpUser(e.target.value)}
-              autoComplete="off"
-            />
-          </label>
-          <label className="field">
-            <span>SMTP password</span>
+            <span>API key</span>
             <input
               type="password"
-              value={smtpPass}
-              onChange={(e) => setSmtpPass(e.target.value)}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="re_… / SG.…"
               autoComplete="new-password"
             />
           </label>
-        </div>
+        ) : (
+          <>
+            <div className="field-row">
+              <label className="field">
+                <span>SMTP host (optional relay)</span>
+                <input
+                  value={smtpHost}
+                  onChange={(e) => setSmtpHost(e.target.value)}
+                  placeholder="smtp.provider.com"
+                />
+              </label>
+              <label className="field">
+                <span>SMTP port</span>
+                <input
+                  type="number"
+                  value={smtpPort}
+                  onChange={(e) => setSmtpPort(e.target.value)}
+                />
+              </label>
+            </div>
+            <div className="field-row">
+              <label className="field">
+                <span>SMTP username</span>
+                <input
+                  value={smtpUser}
+                  onChange={(e) => setSmtpUser(e.target.value)}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="field">
+                <span>SMTP password</span>
+                <input
+                  type="password"
+                  value={smtpPass}
+                  onChange={(e) => setSmtpPass(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+            </div>
+          </>
+        )}
         <button className="btn btn-primary" disabled={adding}>
           {adding ? "Adding…" : "Add domain"}
         </button>
@@ -195,7 +249,12 @@ function SendingDomains() {
             {domains.map((d) => (
               <li key={d.id} className="domain-item">
                 <div className="domain-head">
-                  <strong className="mono">{d.domain}</strong>
+                  <div className="simple-list-main">
+                    <strong className="mono">{d.domain}</strong>
+                    {d.provider ? (
+                      <span className="pill">{d.provider}</span>
+                    ) : null}
+                  </div>
                   <div className="verify-tags">
                     SPF {verifyLabel(d.spf_verified)} DKIM{" "}
                     {verifyLabel(d.dkim_verified)} DMARC{" "}
@@ -321,7 +380,12 @@ function ApiKeys() {
     <Card title="API keys">
       <ErrorBanner message={error} />
 
-      <form onSubmit={onCreate} className="form">
+      <p className="muted small">
+        Use your API key with the public REST API as a Bearer token:{" "}
+        <code>Authorization: Bearer YOUR_KEY</code>
+      </p>
+
+      <form onSubmit={onCreate} className="form mt">
         <div className="field-row">
           <label className="field">
             <span>Key name</span>
@@ -396,7 +460,8 @@ function ApiKeys() {
             <CopyButton value={created.token} />
           </div>
           <p className="muted small">
-            Use it as a Bearer token: <code>Authorization: Bearer {created.prefix}…</code>
+            Use it as a Bearer token:{" "}
+            <code>Authorization: Bearer {created.prefix}…</code>
           </p>
         </Modal>
       )}
@@ -404,16 +469,539 @@ function ApiKeys() {
   );
 }
 
+function OutboundWebhooks() {
+  const [hooks, setHooks] = useState<OutboundWebhook[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [url, setUrl] = useState("");
+  const [events, setEvents] = useState("");
+  const [active, setActive] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const h = await listOutboundWebhooks();
+      setHooks(h);
+    } catch (err) {
+      setError(errMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function onCreate(e: FormEvent) {
+    e.preventDefault();
+    setCreateError(null);
+    setCreating(true);
+    try {
+      const created = await createOutboundWebhook({ url, events, active });
+      setHooks((prev) => [...prev, created]);
+      setUrl("");
+      setEvents("");
+      setActive(true);
+    } catch (err) {
+      setCreateError(errMessage(err));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function onDelete(id: number) {
+    const prev = hooks;
+    setHooks((h) => h.filter((x) => x.id !== id));
+    try {
+      await deleteOutboundWebhook(id);
+    } catch (err) {
+      setError(errMessage(err));
+      setHooks(prev);
+    }
+  }
+
+  return (
+    <Card title="Outbound webhooks">
+      <ErrorBanner message={error} />
+      <ErrorBanner message={createError} />
+
+      <form onSubmit={onCreate} className="form">
+        <label className="field">
+          <span>Endpoint URL</span>
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com/hooks/icereach"
+            required
+          />
+        </label>
+        <label className="field">
+          <span>Events (comma separated)</span>
+          <input
+            value={events}
+            onChange={(e) => setEvents(e.target.value)}
+            placeholder="open, click, unsubscribe, bounce"
+            required
+          />
+        </label>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+          />
+          <span>Active</span>
+        </label>
+        <button className="btn btn-primary" disabled={creating}>
+          {creating ? "Adding…" : "Add webhook"}
+        </button>
+      </form>
+
+      <div className="mt">
+        {loading ? (
+          <Spinner />
+        ) : hooks.length === 0 ? (
+          <Empty message="No outbound webhooks yet." />
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>URL</th>
+                  <th>Events</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {hooks.map((h) => (
+                  <tr key={h.id}>
+                    <td className="mono">{h.url}</td>
+                    <td className="muted">{h.events || "—"}</td>
+                    <td>
+                      <span
+                        className={"pill " + (h.active ? "pill-active" : "")}
+                      >
+                        {h.active ? "active" : "paused"}
+                      </span>
+                    </td>
+                    <td className="row-actions">
+                      <button
+                        className="btn btn-ghost btn-sm btn-danger"
+                        onClick={() => onDelete(h.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function Members({ role }: { role: string }) {
+  const canManage = role === "owner" || role === "admin";
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [newRole, setNewRole] = useState("member");
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const m = await listMembers();
+      setMembers(m);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setForbidden(true);
+      } else {
+        setError(errMessage(err));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function onInvite(e: FormEvent) {
+    e.preventDefault();
+    setInviteError(null);
+    setInviting(true);
+    try {
+      const created = await createMember({ email, password, role: newRole });
+      setMembers((prev) => [...prev, created]);
+      setEmail("");
+      setPassword("");
+      setNewRole("member");
+    } catch (err) {
+      setInviteError(errMessage(err));
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function onRemove(userId: number) {
+    const prev = members;
+    setMembers((m) => m.filter((x) => x.user_id !== userId));
+    try {
+      await deleteMember(userId);
+    } catch (err) {
+      setError(errMessage(err));
+      setMembers(prev);
+    }
+  }
+
+  return (
+    <Card title="Team">
+      <ErrorBanner message={error} />
+
+      {forbidden ? (
+        <Empty message="You don't have permission to manage team members." />
+      ) : (
+        <>
+          {canManage && (
+            <form onSubmit={onInvite} className="form">
+              <ErrorBanner message={inviteError} />
+              <div className="field-row">
+                <label className="field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="teammate@acme.com"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>Temporary password</span>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                </label>
+              </div>
+              <label className="field">
+                <span>Role</span>
+                <select
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                  <option value="owner">Owner</option>
+                </select>
+              </label>
+              <button className="btn btn-primary" disabled={inviting}>
+                {inviting ? "Inviting…" : "Invite member"}
+              </button>
+            </form>
+          )}
+
+          <div className="mt">
+            {loading ? (
+              <Spinner />
+            ) : members.length === 0 ? (
+              <Empty message="No team members yet." />
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Email</th>
+                      <th>Name</th>
+                      <th>Role</th>
+                      {canManage ? <th></th> : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((m) => (
+                      <tr key={m.user_id}>
+                        <td className="mono">{m.email}</td>
+                        <td>{m.name || <span className="muted">—</span>}</td>
+                        <td>
+                          <span className="pill">{m.role}</span>
+                        </td>
+                        {canManage ? (
+                          <td className="row-actions">
+                            <button
+                              className="btn btn-ghost btn-sm btn-danger"
+                              onClick={() => onRemove(m.user_id)}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        ) : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function BillingSection() {
+  const [billing, setBilling] = useState<Billing | null>(null);
+  const [plans, setPlans] = useState<BillingPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const [b, p] = await Promise.all([getBilling(), getPlans()]);
+      setBilling(b);
+      setPlans(p);
+    } catch (err) {
+      setError(errMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function onSwitch(plan: string) {
+    setError(null);
+    setNotice(null);
+    setSwitching(plan);
+    try {
+      const res = await checkout(plan);
+      if (res.applied) {
+        setNotice(res.note || "Plan updated.");
+        await load();
+      } else if (res.checkout_url) {
+        window.location.assign(res.checkout_url);
+      } else {
+        setNotice(res.note || "Checkout started.");
+      }
+    } catch (err) {
+      setError(errMessage(err));
+    } finally {
+      setSwitching(null);
+    }
+  }
+
+  return (
+    <Card title="Billing (preview)">
+      <ErrorBanner message={error} />
+      <SuccessBanner message={notice} />
+      <p className="muted small">
+        This billing flow is a scaffold — checkout does not charge a real card.
+      </p>
+
+      {loading ? (
+        <Spinner />
+      ) : (
+        <>
+          {billing && (
+            <div className="metric-grid mt">
+              <div className="metric-card">
+                <span className="metric-label">Current plan</span>
+                <span className="metric-value">{billing.plan}</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-label">Sent this month</span>
+                <span className="metric-value">{billing.sent_this_month}</span>
+              </div>
+              <div className="metric-card">
+                <span className="metric-label">Monthly limit</span>
+                <span className="metric-value">
+                  {billing.monthly_send_limit}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="mt">
+            {plans.length === 0 ? (
+              <Empty message="No plans available." />
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Plan</th>
+                      <th>Monthly sends</th>
+                      <th>Price</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plans.map((p) => {
+                      const current = billing?.plan === p.key;
+                      return (
+                        <tr key={p.key}>
+                          <td>
+                            <strong>{p.name}</strong>{" "}
+                            {current ? (
+                              <span className="pill pill-active">current</span>
+                            ) : null}
+                          </td>
+                          <td>{p.monthly_send_limit}</td>
+                          <td>${p.price_usd}/mo</td>
+                          <td className="row-actions">
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => onSwitch(p.key)}
+                              disabled={current || switching === p.key}
+                            >
+                              {switching === p.key
+                                ? "Switching…"
+                                : current
+                                  ? "Current"
+                                  : "Switch plan"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function AuditLogs() {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+
+  async function load() {
+    try {
+      const l = await listAuditLogs();
+      setLogs(l);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setForbidden(true);
+      } else {
+        setError(errMessage(err));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <Card title="Audit log">
+      <ErrorBanner message={error} />
+      {loading ? (
+        <Spinner />
+      ) : forbidden ? (
+        <Empty message="Admins only." />
+      ) : logs.length === 0 ? (
+        <Empty message="No audit entries yet." />
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>User</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((l) => (
+                <tr key={l.id}>
+                  <td className="muted">
+                    {new Date(l.created_at).toLocaleString()}
+                  </td>
+                  <td className="mono">{l.action}</td>
+                  <td className="muted">{l.target || "—"}</td>
+                  <td className="mono">#{l.user_id}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+const TABS = [
+  { key: "domains", label: "Sending domains" },
+  { key: "apikeys", label: "API keys" },
+  { key: "webhooks", label: "Outbound webhooks" },
+  { key: "team", label: "Team" },
+  { key: "billing", label: "Billing" },
+  { key: "audit", label: "Audit log" },
+] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
 export default function Settings() {
+  const { me } = useAuth();
+  const role = me?.role ?? "member";
+  const [tab, setTab] = useState<TabKey>("domains");
+
   return (
     <div>
       <PageHeader
         title="Settings"
-        subtitle="Sending domains and API access."
+        subtitle="Workspace console — sending, integrations, team and billing."
       />
-      <div className="stack">
-        <SendingDomains />
-        <ApiKeys />
+
+      <div className="seg-mode mt-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={"chip" + (tab === t.key ? " chip-active" : "")}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="stack mt">
+        {tab === "domains" && <SendingDomains />}
+        {tab === "apikeys" && <ApiKeys />}
+        {tab === "webhooks" && <OutboundWebhooks />}
+        {tab === "team" && <Members role={role} />}
+        {tab === "billing" && <BillingSection />}
+        {tab === "audit" && <AuditLogs />}
       </div>
     </div>
   );

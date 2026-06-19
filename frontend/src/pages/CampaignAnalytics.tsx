@@ -1,17 +1,25 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  ApiError,
   api,
+  analyticsNarrative,
+  getCampaignVariants,
+  type AnalyticsNarrative,
   type Campaign,
   type CampaignAnalytics as Analytics,
+  type CampaignVariants,
 } from "../lib/api";
 import {
   Card,
+  Empty,
   ErrorBanner,
   PageHeader,
   Spinner,
   errMessage,
 } from "../components/ui";
+
+const AI_DISABLED = "AI not configured";
 
 interface Metric {
   key: keyof Analytics;
@@ -45,18 +53,26 @@ export default function CampaignAnalytics() {
   const { id } = useParams<{ id: string }>();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [data, setData] = useState<Analytics | null>(null);
+  const [variants, setVariants] = useState<CampaignVariants | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // AI narrative
+  const [narrative, setNarrative] = useState<AnalyticsNarrative | null>(null);
+  const [narrativeBusy, setNarrativeBusy] = useState(false);
+  const [narrativeError, setNarrativeError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [c, a] = await Promise.all([
+        const [c, a, v] = await Promise.all([
           api.get<Campaign>(`/api/campaigns/${id}`),
           api.get<Analytics>(`/api/campaigns/${id}/analytics`),
+          getCampaignVariants(id!).catch(() => null),
         ]);
         setCampaign(c);
         setData(a);
+        setVariants(v);
       } catch (err) {
         setError(errMessage(err));
       } finally {
@@ -64,6 +80,25 @@ export default function CampaignAnalytics() {
       }
     })();
   }, [id]);
+
+  async function onGenerateNarrative() {
+    if (!id) return;
+    setNarrativeError(null);
+    setNarrative(null);
+    setNarrativeBusy(true);
+    try {
+      const res = await analyticsNarrative(id);
+      setNarrative(res);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 503) {
+        setNarrativeError(AI_DISABLED);
+      } else {
+        setNarrativeError(errMessage(err));
+      }
+    } finally {
+      setNarrativeBusy(false);
+    }
+  }
 
   return (
     <div>
@@ -95,6 +130,92 @@ export default function CampaignAnalytics() {
               </div>
             ))}
           </div>
+          {variants && variants.variants.length > 1 && (
+            <Card title="A/B breakdown">
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Variant</th>
+                      <th>Subject</th>
+                      <th className="num">Weight</th>
+                      <th className="num">Sent</th>
+                      <th className="num">Opens</th>
+                      <th className="num">Clicks</th>
+                      <th className="num">Open rate</th>
+                      <th className="num">Click rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {variants.variants.map((v, i) => {
+                      const isWinner =
+                        variants.winner_variant_id === v.variant_id;
+                      return (
+                        <tr
+                          key={v.variant_id}
+                          className={isWinner ? "row-selected" : ""}
+                        >
+                          <td>
+                            <strong>{String.fromCharCode(65 + i)}</strong>{" "}
+                            {isWinner ? (
+                              <span className="pill pill-active">winner</span>
+                            ) : null}
+                          </td>
+                          <td>{v.subject || <span className="muted">—</span>}</td>
+                          <td className="num">{v.weight}</td>
+                          <td className="num">{v.sent}</td>
+                          <td className="num">{v.unique_opens}</td>
+                          <td className="num">{v.unique_clicks}</td>
+                          <td className="num">
+                            {(v.open_rate * 100).toFixed(1)}%
+                          </td>
+                          <td className="num">
+                            {(v.click_rate * 100).toFixed(1)}%
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          <Card
+            title="AI summary"
+            actions={
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onGenerateNarrative}
+                disabled={narrativeBusy}
+              >
+                {narrativeBusy ? "Generating…" : "Generate AI summary"}
+              </button>
+            }
+          >
+            <ErrorBanner message={narrativeError} />
+            {narrative ? (
+              <div className="critique">
+                <p>{narrative.summary}</p>
+                {narrative.highlights.length > 0 && (
+                  <div>
+                    <h4>Highlights</h4>
+                    <ul className="bullet">
+                      {narrative.highlights.map((h, i) => (
+                        <li key={i}>{h}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : narrativeBusy ? (
+              <Spinner label="Analyzing campaign…" />
+            ) : !narrativeError ? (
+              <Empty message="Generate an AI summary of this campaign's performance." />
+            ) : null}
+          </Card>
+
           <Card>
             <p className="muted small">
               Delivered and complaints are not tracked in Phase 1 and render as

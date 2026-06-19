@@ -26,6 +26,12 @@ import {
 
 const AI_DISABLED = "AI is not configured (set GEMINI_API_KEY)";
 
+interface VariantDraft {
+  subject: string;
+  html: string;
+  weight: number;
+}
+
 export default function CampaignNew() {
   const navigate = useNavigate();
 
@@ -43,8 +49,11 @@ export default function CampaignNew() {
   const [fromEmail, setFromEmail] = useState("");
   const [domainId, setDomainId] = useState("");
   const [listId, setListId] = useState("");
-  const [subject, setSubject] = useState("");
-  const [html, setHtml] = useState("");
+
+  // A/B variants — a single variant is the default; "Add A/B variant" appends more.
+  const [variants, setVariants] = useState<VariantDraft[]>([
+    { subject: "", html: "", weight: 1 },
+  ]);
 
   const [saved, setSaved] = useState<Campaign | null>(null);
   const [saving, setSaving] = useState(false);
@@ -66,6 +75,18 @@ export default function CampaignNew() {
   // send
   const [sendJob, setSendJob] = useState<Job | null>(null);
   const [sending, setSending] = useState(false);
+
+  function updateVariant(idx: number, patch: Partial<VariantDraft>) {
+    setVariants((prev) =>
+      prev.map((v, i) => (i === idx ? { ...v, ...patch } : v)),
+    );
+  }
+  function addVariant() {
+    setVariants((prev) => [...prev, { subject: "", html: "", weight: 1 }]);
+  }
+  function removeVariant(idx: number) {
+    setVariants((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   useEffect(() => {
     (async () => {
@@ -94,10 +115,9 @@ export default function CampaignNew() {
         getTemplate(id),
         renderTemplate(id),
       ]);
-      setSubject(tmpl.subject);
-      setHtml(rendered.html);
+      updateVariant(0, { subject: tmpl.subject, html: rendered.html });
       if (!name) setName(tmpl.name);
-      setNotice("Loaded subject and body from template.");
+      setNotice("Loaded subject and body into variant A.");
     } catch (err) {
       setError(errMessage(err));
     } finally {
@@ -117,7 +137,11 @@ export default function CampaignNew() {
         from_email: fromEmail || undefined,
         sending_domain_id: domainId ? Number(domainId) : undefined,
         list_id: listId ? Number(listId) : undefined,
-        variants: [{ subject, html, weight: 1 }],
+        variants: variants.map((v) => ({
+          subject: v.subject,
+          html: v.html,
+          weight: v.weight,
+        })),
       });
       setSaved(created);
       setNotice("Campaign saved. You can now send it.");
@@ -134,7 +158,7 @@ export default function CampaignNew() {
     setAiSubjBusy(true);
     try {
       const res = await api.post<AiSubjectsOut>("/api/ai/subjects", {
-        brief: brief || name || subject,
+        brief: brief || name || variants[0]?.subject || "",
         n: 5,
         tone: tone || undefined,
       });
@@ -156,8 +180,8 @@ export default function CampaignNew() {
     setCritiqueBusy(true);
     try {
       const res = await api.post<AiCritiqueOut>("/api/ai/critique", {
-        subject,
-        html,
+        subject: variants[0]?.subject || "",
+        html: variants[0]?.html || "",
       });
       setCritique(res);
     } catch (err) {
@@ -290,25 +314,67 @@ export default function CampaignNew() {
                 </select>
               </label>
             </div>
-            <label className="field">
-              <span>Subject</span>
-              <input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Your subject line"
-                required
-              />
-            </label>
-            <label className="field">
-              <span>HTML body</span>
-              <textarea
-                className="code"
-                rows={10}
-                value={html}
-                onChange={(e) => setHtml(e.target.value)}
-                placeholder="<h1>Hello!</h1><p>…</p>"
-              />
-            </label>
+            {variants.map((v, i) => (
+              <div className="variant-block" key={i}>
+                <div className="variant-head">
+                  <span className="block-kind">
+                    Variant {String.fromCharCode(65 + i)}
+                  </span>
+                  {variants.length > 1 ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm btn-danger"
+                      onClick={() => removeVariant(i)}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+                <label className="field">
+                  <span>Subject</span>
+                  <input
+                    value={v.subject}
+                    onChange={(e) => updateVariant(i, { subject: e.target.value })}
+                    placeholder="Your subject line"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>HTML body</span>
+                  <textarea
+                    className="code"
+                    rows={10}
+                    value={v.html}
+                    onChange={(e) => updateVariant(i, { html: e.target.value })}
+                    placeholder="<h1>Hello!</h1><p>…</p>"
+                  />
+                </label>
+                {variants.length > 1 ? (
+                  <label className="field">
+                    <span>Weight (relative split)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={v.weight}
+                      onChange={(e) =>
+                        updateVariant(i, {
+                          weight: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                        })
+                      }
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ))}
+
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={addVariant}
+            >
+              + Add A/B variant
+            </button>
 
             <div className="actions-row">
               <button className="btn btn-primary" disabled={saving}>
@@ -371,8 +437,8 @@ export default function CampaignNew() {
                     <button
                       type="button"
                       className="ai-pick"
-                      onClick={() => setSubject(v.subject)}
-                      title="Use this subject"
+                      onClick={() => updateVariant(0, { subject: v.subject })}
+                      title="Use this subject for variant A"
                     >
                       <span className="ai-subject">{v.subject}</span>
                       {v.preheader ? (

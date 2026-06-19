@@ -15,6 +15,7 @@ import Templates from "./pages/Templates";
 import TemplateBuilder from "./pages/TemplateBuilder";
 import Automations from "./pages/Automations";
 import AutomationBuilder from "./pages/AutomationBuilder";
+import Forms from "./pages/Forms";
 import Settings from "./pages/Settings";
 
 export default function App() {
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="/automations" element={<Automations />} />
         <Route path="/automations/new" element={<AutomationBuilder />} />
         <Route path="/automations/:id" element={<AutomationBuilder />} />
+        <Route path="/forms" element={<Forms />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 

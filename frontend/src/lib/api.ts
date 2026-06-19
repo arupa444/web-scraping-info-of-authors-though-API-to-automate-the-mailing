@@ -223,9 +223,11 @@ export interface DnsRecord {
   value: string;
   purpose: string;
 }
+export type SendingProvider = "smtp" | "resend" | "sendgrid";
 export interface SendingDomain {
   id: number;
   domain: string;
+  provider?: SendingProvider;
   dkim_selector?: string;
   spf_verified?: boolean;
   dkim_verified?: boolean;
@@ -237,6 +239,8 @@ export interface SendingDomain {
 }
 export interface SendingDomainIn {
   domain: string;
+  provider?: SendingProvider;
+  api_key?: string;
   smtp_host?: string;
   smtp_port?: number;
   smtp_username?: string;
@@ -532,4 +536,156 @@ export async function pollJob(
     };
     tick();
   });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — A/B variants & AI narrative
+// ---------------------------------------------------------------------------
+
+export interface VariantStats {
+  variant_id: number;
+  subject: string;
+  weight: number;
+  sent: number;
+  unique_opens: number;
+  unique_clicks: number;
+  open_rate: number;
+  click_rate: number;
+}
+export interface CampaignVariants {
+  variants: VariantStats[];
+  winner_variant_id: number | null;
+}
+export interface AnalyticsNarrative {
+  summary: string;
+  highlights: string[];
+}
+
+export function getCampaignVariants(id: number | string) {
+  return api.get<CampaignVariants>(`/api/campaigns/${id}/variants`);
+}
+export function analyticsNarrative(id: number | string) {
+  return api.post<AnalyticsNarrative>(
+    `/api/campaigns/${id}/analytics/narrative`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 — Signup forms & outbound webhooks
+// ---------------------------------------------------------------------------
+
+export interface SignupForm {
+  id: number;
+  name: string;
+  list_id?: number | null;
+  sending_domain_id?: number | null;
+  double_optin: boolean;
+  success_message: string;
+  redirect_url: string;
+}
+export interface SignupFormIn {
+  name: string;
+  list_id?: number | null;
+  sending_domain_id?: number | null;
+  double_optin?: boolean;
+  success_message?: string;
+  redirect_url?: string;
+}
+
+export function listForms() {
+  return api.get<SignupForm[]>("/api/forms");
+}
+export function createForm(input: SignupFormIn) {
+  return api.post<SignupForm>("/api/forms", input);
+}
+export function deleteForm(id: number | string) {
+  return api.del<void>(`/api/forms/${id}`);
+}
+
+export interface OutboundWebhook {
+  id: number;
+  url: string;
+  events: string;
+  active: boolean;
+}
+export interface OutboundWebhookIn {
+  url: string;
+  events: string;
+  active?: boolean;
+}
+
+export function listOutboundWebhooks() {
+  return api.get<OutboundWebhook[]>("/api/outbound-webhooks");
+}
+export function createOutboundWebhook(input: OutboundWebhookIn) {
+  return api.post<OutboundWebhook>("/api/outbound-webhooks", input);
+}
+export function deleteOutboundWebhook(id: number | string) {
+  return api.del<void>(`/api/outbound-webhooks/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — Billing, members & audit logs
+// ---------------------------------------------------------------------------
+
+export interface BillingPlan {
+  key: string;
+  name: string;
+  monthly_send_limit: number;
+  price_usd: number;
+}
+export interface Billing {
+  plan: string;
+  monthly_send_limit: number;
+  sent_this_month: number;
+}
+export interface CheckoutOut {
+  checkout_url: string;
+  applied: boolean;
+  note: string;
+}
+
+export function getPlans() {
+  return api.get<BillingPlan[]>("/api/billing/plans");
+}
+export function getBilling() {
+  return api.get<Billing>("/api/billing");
+}
+export function checkout(plan: string) {
+  return api.post<CheckoutOut>("/api/billing/checkout", { plan });
+}
+
+export interface Member {
+  user_id: number;
+  email: string;
+  name: string | null;
+  role: string;
+}
+export interface MemberIn {
+  email: string;
+  password: string;
+  role: string;
+}
+
+export function listMembers() {
+  return api.get<Member[]>("/api/members");
+}
+export function createMember(input: MemberIn) {
+  return api.post<Member>("/api/members", input);
+}
+export function deleteMember(userId: number | string) {
+  return api.del<void>(`/api/members/${userId}`);
+}
+
+export interface AuditLog {
+  id: number;
+  action: string;
+  target: string;
+  user_id: number;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export function listAuditLogs() {
+  return api.get<AuditLog[]>("/api/audit-logs");
 }
