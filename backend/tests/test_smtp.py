@@ -132,22 +132,19 @@ def test_send_reconnects_when_noop_probe_fails():
     assert FakeSMTP.instances[1].sent[-1][1] == "b@example.org"
 
 
-def test_verified_host_keeps_tls_verification():
-    """Major providers keep full certificate/hostname verification."""
-    session = SmtpSession("smtp.gmail.com", 587, "user@gmail.com", "secret")
-    ctx = session._context()
+def test_tls_verified_by_default_for_any_host():
+    """Verification is on by default for every host (Gmail, Zoho, SES, custom...)."""
     import ssl as _ssl
+    for host in ("smtp.gmail.com", "smtp.zoho.in", "smtp.example.com", "mail.internal.corp"):
+        ctx = SmtpSession(host, 587, "u", "p")._context()
+        assert ctx.check_hostname is True
+        assert ctx.verify_mode == _ssl.CERT_REQUIRED
 
-    assert ctx.check_hostname is True
-    assert ctx.verify_mode == _ssl.CERT_REQUIRED
 
-
-def test_custom_host_relaxes_tls_verification():
-    """Custom/self-hosted servers relax verification to stay usable."""
-    session = _session()
-    ctx = session._context()
+def test_tls_relaxed_only_when_opted_out():
+    """verify=False (trusted self-signed/internal relay) relaxes verification."""
     import ssl as _ssl
-
+    ctx = SmtpSession("mail.internal.corp", 587, "u", "p", verify=False)._context()
     assert ctx.check_hostname is False
     assert ctx.verify_mode == _ssl.CERT_NONE
 

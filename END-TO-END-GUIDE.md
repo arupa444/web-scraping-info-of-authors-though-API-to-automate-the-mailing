@@ -142,6 +142,10 @@ adding its own DKIM signature (Zoho adds theirs).
 > Want iceReach to DKIM-sign too? Publish the shown TXT records in `influenceai.in` DNS,
 > then **Verify**. Only do this if you understand double-signing; for Zoho it's unnecessary.
 
+> **TLS:** iceReach verifies the relay's TLS certificate for **every** provider (Zoho, SES,
+> Mailgun, custom — there's no provider allowlist). Leave `verify_tls` on. Only set it to
+> `false` for a trusted **self-signed/internal** relay.
+
 ## 6. Add contacts
 
 Required field: `emails`/`email`; optional `name`; anything else becomes a **custom attribute** usable as a `{merge}` tag.

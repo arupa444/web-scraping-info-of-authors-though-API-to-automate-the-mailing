@@ -31,7 +31,10 @@ class SmtpProvider(EmailProvider):
 
     def __init__(self, domain):
         self.domain = domain
-        self.session = SmtpSession(domain.smtp_host, domain.smtp_port, domain.smtp_username, domain.smtp_password)
+        self.session = SmtpSession(
+            domain.smtp_host, domain.smtp_port, domain.smtp_username, domain.smtp_password,
+            verify=getattr(domain, "verify_tls", True),
+        )
 
     def open(self) -> None:
         self.session.connect()

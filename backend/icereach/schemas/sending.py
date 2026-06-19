@@ -11,12 +11,14 @@ class SendingDomainIn(BaseModel):
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
+    verify_tls: bool = True
 
 
 class SendingDomainOut(BaseModel):
     id: int
     domain: str
     provider: str
+    verify_tls: bool
     dkim_selector: str
     spf_verified: bool
     dkim_verified: bool

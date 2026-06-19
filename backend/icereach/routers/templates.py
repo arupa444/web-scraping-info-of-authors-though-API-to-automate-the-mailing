@@ -111,7 +111,8 @@ def test_send(template_id: int, body: TestSendIn, ctx: AuthContext = Depends(aut
     from_email = f"test@{domain.domain}"
     msg = build_message(ctx.workspace.name, from_email, str(body.to_email), f"[TEST] {subject}", html, text)
 
-    session = SmtpSession(domain.smtp_host, domain.smtp_port, domain.smtp_username, domain.smtp_password)
+    session = SmtpSession(domain.smtp_host, domain.smtp_port, domain.smtp_username, domain.smtp_password,
+                          verify=domain.verify_tls)
     try:
         session.connect()
         if domain.dkim_verified:

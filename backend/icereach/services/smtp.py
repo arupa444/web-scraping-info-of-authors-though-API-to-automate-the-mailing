@@ -26,21 +26,6 @@ from typing import Mapping, Optional
 
 from icereach.services.dkim import sign_message
 
-# Major mailbox providers present publicly verifiable certificates, so we keep
-# full TLS verification for them. Custom/self-hosted servers frequently use
-# private or self-signed certs, so verification is relaxed there to stay usable.
-_VERIFIED_HOSTS = frozenset(
-    {
-        "smtp.gmail.com",
-        "smtp.office365.com",
-        "smtp.mail.yahoo.com",
-        "smtp.zoho.in",
-        "smtp.zoho.com",
-        "smtp.zoho.eu",
-    }
-)
-
-
 class SmtpSession:
     """Holds a single authenticated SMTP connection for reuse across a batch.
 
@@ -50,7 +35,7 @@ class SmtpSession:
     one transparent reconnect + retry.
     """
 
-    def __init__(self, server: str, port: int, username: str, password: str) -> None:
+    def __init__(self, server: str, port: int, username: str, password: str, verify: bool = True) -> None:
         """Configure the session; no network connection is made yet.
 
         Args:
@@ -58,21 +43,22 @@ class SmtpSession:
             port: SMTP server port (STARTTLS submission port, e.g. 587).
             username: Login username (usually the sender address).
             password: Login password / app password.
+            verify: Verify the server's TLS certificate (default, secure). Set
+                False ONLY for a self-signed/internal relay you trust.
         """
         self.server_host = server
         self.port = port
         self.username = username
         self.password = password
+        self.verify = verify
         self.client: Optional[smtplib.SMTP] = None
 
     def _context(self) -> ssl.SSLContext:
-        """Build a per-provider TLS context.
-
-        Major providers keep full verification; everything else relaxes
-        hostname/cert checking to tolerate private or self-signed certs.
-        """
+        """Build the TLS context: full verification by default (works for every
+        real provider — Gmail/Zoho/SES/Mailgun/...). Relaxed only when the
+        operator explicitly opts out for a self-signed/internal relay."""
         context = ssl.create_default_context()
-        if self.server_host not in _VERIFIED_HOSTS:
+        if not self.verify:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
         return context

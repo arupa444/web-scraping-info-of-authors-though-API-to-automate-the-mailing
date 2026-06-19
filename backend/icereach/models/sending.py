@@ -27,6 +27,8 @@ class SendingDomain(Base, TimestampMixin, WorkspaceScopedMixin):
     smtp_port: Mapped[int] = mapped_column(Integer, default=587, nullable=False)
     smtp_username: Mapped[str] = mapped_column(String(320), default="", nullable=False)
     smtp_password: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # Verify the relay's TLS cert (secure default). False only for a trusted self-signed relay.
+    verify_tls: Mapped[bool] = mapped_column(default=True, nullable=False)
     spf_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     dkim_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     dmarc_verified: Mapped[bool] = mapped_column(default=False, nullable=False)

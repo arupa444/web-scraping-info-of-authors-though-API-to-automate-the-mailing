@@ -20,7 +20,7 @@ def _out(d: SendingDomain) -> SendingDomainOut:
     return SendingDomainOut(
         id=d.id, domain=d.domain, provider=d.provider, dkim_selector=d.dkim_selector,
         spf_verified=d.spf_verified, dkim_verified=d.dkim_verified, dmarc_verified=d.dmarc_verified,
-        status=d.status, smtp_host=d.smtp_host,
+        status=d.status, smtp_host=d.smtp_host, verify_tls=d.verify_tls,
     )
 
 
@@ -46,6 +46,7 @@ def create_domain(body: SendingDomainIn, ctx: AuthContext = Depends(auth_context
         dkim_selector="icereach", dkim_private_key=private_pem, dkim_public_key=dkim_txt,
         smtp_host=body.smtp_host, smtp_port=body.smtp_port,
         smtp_username=body.smtp_username, smtp_password=body.smtp_password,
+        verify_tls=body.verify_tls,
     )
     db.add(d)
     db.commit()
