@@ -82,14 +82,17 @@ def send_campaign(db: DbSession, job, progress) -> dict:
     from . import quota
     from ..models import Workspace
     workspace = db.get(Workspace, campaign.workspace_id)
+    # Caps THIS job at the remaining monthly allowance. The single worker runs jobs
+    # sequentially so this is exact; only multi-worker deploys (out of scope, see
+    # rate-limit caveat) could overshoot — that needs a row-locked counter.
     quota_remaining = quota.remaining(db, workspace)  # None = unlimited
 
     provider = get_provider(domain)
-    provider.open()
     sent = 0
     skipped = 0
     total = len(recipients)
     try:
+        provider.open()
         for i, contact in enumerate(recipients):
             if quota_remaining is not None and sent >= quota_remaining:
                 skipped += 1
@@ -130,12 +133,18 @@ def send_campaign(db: DbSession, job, progress) -> dict:
             db.commit()
             if total:
                 progress((i + 1) / total * 100, f"Sent {sent}/{total}")
+        campaign.status = "sent"
+        campaign.sent_at = datetime.utcnow()
+        db.commit()
+    except Exception:
+        # A job-level failure (e.g. SMTP connect) must not leave the campaign
+        # wedged in 'sending'; mark it failed, then let the queue retry/DLQ.
+        db.rollback()
+        campaign.status = "failed"
+        db.commit()
+        raise
     finally:
         provider.close()
-
-    campaign.status = "sent"
-    campaign.sent_at = datetime.utcnow()
-    db.commit()
     return {"sent": sent, "skipped": skipped, "recipients": total}
 
 

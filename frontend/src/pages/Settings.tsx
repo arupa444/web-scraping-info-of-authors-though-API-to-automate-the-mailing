@@ -349,7 +349,7 @@ function ApiKeys() {
         .filter(Boolean);
       const res = await api.post<ApiKeyCreated>("/api/api-keys", {
         name,
-        scopes: scopeList.length ? scopeList : undefined,
+        scopes: scopeList.join(","), // backend expects a comma-separated string
       });
       setCreated(res);
       setKeys((prev) => [
@@ -434,7 +434,7 @@ function ApiKeys() {
                     </td>
                     <td className="mono">{k.prefix}…</td>
                     <td className="muted">
-                      {k.scopes?.length ? k.scopes.join(", ") : "—"}
+                      {k.scopes ? k.scopes : "—"}
                     </td>
                     <td className="row-actions">
                       <button

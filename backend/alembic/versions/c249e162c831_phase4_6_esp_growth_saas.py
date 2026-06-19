@@ -52,12 +52,12 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_signup_forms_workspace_id'), ['workspace_id'], unique=False)
 
     with op.batch_alter_table('sending_domains', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('provider', sa.String(length=20), nullable=False))
-        batch_op.add_column(sa.Column('api_key', sa.Text(), nullable=False))
+        batch_op.add_column(sa.Column('provider', sa.String(length=20), nullable=False, server_default='smtp'))
+        batch_op.add_column(sa.Column('api_key', sa.Text(), nullable=False, server_default=''))
 
     with op.batch_alter_table('workspaces', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('plan', sa.String(length=40), nullable=False))
-        batch_op.add_column(sa.Column('monthly_send_limit', sa.Integer(), nullable=False))
+        batch_op.add_column(sa.Column('plan', sa.String(length=40), nullable=False, server_default='free'))
+        batch_op.add_column(sa.Column('monthly_send_limit', sa.Integer(), nullable=False, server_default='0'))
 
     # ### end Alembic commands ###
 

@@ -32,7 +32,7 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_saved_blocks_workspace_id'), ['workspace_id'], unique=False)
 
     with op.batch_alter_table('templates', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('blocks', sa.JSON(), nullable=False))
+        batch_op.add_column(sa.Column('blocks', sa.JSON(), nullable=False, server_default='[]'))
 
     # ### end Alembic commands ###
 

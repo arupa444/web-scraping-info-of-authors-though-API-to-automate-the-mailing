@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -23,7 +23,8 @@ class MemberOut(BaseModel):
 class MemberInviteIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=200)
-    role: str = "member"
+    # 'owner' can never be granted via invite; only admin/member.
+    role: Literal["admin", "member"] = "member"
 
 
 class RoleUpdateIn(BaseModel):

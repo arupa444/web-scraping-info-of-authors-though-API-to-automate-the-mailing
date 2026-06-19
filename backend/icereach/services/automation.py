@@ -110,7 +110,9 @@ def _send_step(db: DbSession, run: AutomationRun, automation: Automation, step: 
 
     cfg = step.config or {}
     if cfg.get("template_id"):
-        tpl = db.get(Template, cfg["template_id"])
+        # Scope to the automation's workspace — never read another tenant's template.
+        tpl = db.scalar(select(Template).where(
+            Template.id == cfg["template_id"], Template.workspace_id == automation.workspace_id))
         if tpl is None:
             raise ValueError("Step references a missing template")
         subject, html, text = tpl.subject, tpl.html, tpl.text
@@ -143,15 +145,18 @@ def _send_step(db: DbSession, run: AutomationRun, automation: Automation, step: 
         msg_row.sent_at = datetime.utcnow()
     finally:
         provider.close()
-    db.commit()
+    # NOTE: no commit here — the caller commits the sent Message together with the
+    # run.position advance so the cursor can never lag behind a recorded send.
 
 
 def advance_run(db: DbSession, run: AutomationRun) -> None:
     """Advance a single run through as many steps as are due this tick."""
     automation = db.get(Automation, run.automation_id)
     steps = _steps(db, run.automation_id)
+    # A run is processable whether freshly active (direct call/tests) or claimed
+    # by advance_due_runs (status 'running').
     try:
-        while run.status == "active" and run.next_run_at <= datetime.utcnow():
+        while run.status in ("active", "running") and run.next_run_at <= datetime.utcnow():
             if run.position >= len(steps):
                 run.status = "done"
                 db.commit()
@@ -161,12 +166,9 @@ def advance_run(db: DbSession, run: AutomationRun) -> None:
                 _send_step(db, run, automation, step)
                 run.position += 1
             elif step.type == "wait":
-                cfg = step.config or {}
-                hours = cfg.get("delay_hours")
-                if hours is None:
-                    hours = cfg.get("delay_days", 1) * 24
                 run.position += 1
-                run.next_run_at = datetime.utcnow() + timedelta(hours=hours)
+                run.next_run_at = datetime.utcnow() + timedelta(hours=_wait_hours(step.config or {}))
+                run.status = "active"  # release the claim; re-picked when due
                 db.commit()
                 return  # paused until next_run_at
             elif step.type == "condition":
@@ -178,9 +180,11 @@ def advance_run(db: DbSession, run: AutomationRun) -> None:
                 run.position += 1  # unknown step type — skip
             db.commit()
 
-        if run.status == "active" and run.position >= len(steps):
+        if run.position >= len(steps) and run.status in ("active", "running"):
             run.status = "done"
-        db.commit()  # always persist the final state (done/exited/paused)
+        elif run.status == "running":
+            run.status = "active"  # safety: never leave a run stuck 'running'
+        db.commit()  # always persist the final state (done/exited/active)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         run = db.get(AutomationRun, run.id)
@@ -189,13 +193,36 @@ def advance_run(db: DbSession, run: AutomationRun) -> None:
         db.commit()
 
 
+def _wait_hours(cfg: dict) -> float:
+    """Coerce a wait step's delay to non-negative hours (bad config -> 24h)."""
+    try:
+        hours = cfg.get("delay_hours")
+        if hours is None:
+            hours = float(cfg.get("delay_days", 1)) * 24
+        return max(0.0, float(hours))
+    except (TypeError, ValueError):
+        return 24.0
+
+
 def advance_due_runs(db: DbSession, limit: int = 200) -> int:
-    runs = db.scalars(
+    from sqlalchemy import update
+    candidates = db.scalars(
         select(AutomationRun)
         .where(AutomationRun.status == "active", AutomationRun.next_run_at <= datetime.utcnow())
         .order_by(AutomationRun.next_run_at)
         .limit(limit)
     ).all()
+    runs = []
+    for cand in candidates:
+        # Atomically claim (active -> running); skip if another worker won the race.
+        res = db.execute(
+            update(AutomationRun).where(AutomationRun.id == cand.id, AutomationRun.status == "active")
+            .values(status="running")
+        )
+        db.commit()
+        if res.rowcount == 1:
+            db.refresh(cand)
+            runs.append(cand)
     for run in runs:
         advance_run(db, run)
     return len(runs)

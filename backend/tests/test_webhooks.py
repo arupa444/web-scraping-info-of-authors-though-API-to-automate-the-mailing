@@ -60,6 +60,20 @@ def test_sendgrid_bounce_marks_and_suppresses():
         db.close()
 
 
+def test_email_only_event_does_not_cross_tenant_suppress():
+    # A forged event with NO provider message id must not suppress anyone
+    # (the workspace-unscoped email fallback was removed).
+    _, _, _ = _seed("real-mid", "victim@x.com")
+    c = TestClient(app)
+    r = c.post("/webhooks/sendgrid", json=[{"event": "spamreport", "email": "victim@x.com"}])
+    assert r.status_code == 200 and r.json()["received"] == 0
+    db = SessionLocal()
+    try:
+        assert db.query(Suppression).filter(Suppression.email == "victim@x.com").count() == 0
+    finally:
+        db.close()
+
+
 def test_delivered_unlocks_analytics_metric():
     from icereach.services.analytics import campaign_metrics
     ws_id, camp_id, mid = _seed("prov-an")

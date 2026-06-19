@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import smtplib
 import ssl
+from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 from typing import Mapping, Optional
@@ -126,7 +127,9 @@ class SmtpSession:
     def _serialize(msg: object) -> object:
         """Coerce an EmailMessage to wire bytes; pass str/bytes through."""
         if isinstance(msg, EmailMessage):
-            return msg.as_bytes()
+            # CRLF line endings required on the wire (RFC 5321); the default
+            # policy emits bare LF, which strict MTAs reject.
+            return msg.as_bytes(policy=policy.SMTP)
         return msg
 
     def close(self) -> None:
@@ -216,6 +219,7 @@ def dkim_sign_message(
         The signed message as wire bytes, beginning with the
         ``DKIM-Signature:`` header.
     """
-    message_bytes = msg.as_bytes()
+    # Sign the exact CRLF bytes that go on the wire, or the signature won't verify.
+    message_bytes = msg.as_bytes(policy=policy.SMTP)
     signature = sign_message(message_bytes, domain, selector, private_key_pem)
     return signature + message_bytes

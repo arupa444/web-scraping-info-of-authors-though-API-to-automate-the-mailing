@@ -94,11 +94,18 @@ def poll_dsn(db: DbSession, job, progress) -> dict:  # pragma: no cover - networ
         _, data = imap.search(None, "UNSEEN")
         ids = data[0].split()
         for i, num in enumerate(ids):
-            _, msg_data = imap.fetch(num, "(RFC822)")
-            raw = msg_data[0][1]
-            if process_dsn_message(db, raw):
+            try:
+                _, msg_data = imap.fetch(num, "(RFC822)")
+                raw = msg_data[0][1]
+                handled = process_dsn_message(db, raw)
+            except Exception:  # noqa: BLE001 — one bad message must not abort the batch
+                db.rollback()
+                handled = False
+            if handled:
                 processed += 1
-            imap.store(num, "+FLAGS", "\\Seen")
+                # Mark \Seen ONLY when handled, so transient/unmatched bounces stay
+                # UNSEEN and get retried instead of being silently dropped.
+                imap.store(num, "+FLAGS", "\\Seen")
             progress((i + 1) / max(1, len(ids)) * 100, f"Processed {processed} bounces")
     finally:
         imap.logout()

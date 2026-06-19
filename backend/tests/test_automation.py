@@ -116,6 +116,28 @@ def test_double_enroll_is_noop():
         db.close()
 
 
+def test_send_step_rejects_cross_tenant_template():
+    from icereach.models import Template
+    db = SessionLocal()
+    try:
+        wsa = Workspace(name="A", slug="w-a-tpl"); wsb = Workspace(name="B", slug="w-b-tpl")
+        db.add_all([wsa, wsb]); db.flush()
+        # template belongs to workspace B
+        tpl = Template(workspace_id=wsb.id, name="B tpl", subject="secret", html="<p>secret</p>", text="secret")
+        db.add(tpl); db.flush()
+        c = Contact(workspace_id=wsa.id, email="a@x.com", status="subscribed"); db.add(c); db.flush()
+        dom = _domain(db, wsa)
+        # workspace A automation references B's template id
+        a = _automation(db, wsa, dom, [("send", {"template_id": tpl.id})])
+        run = engine.enroll(db, a, c)
+        engine.advance_run(db, run)
+        db.refresh(run)
+        assert run.status == "failed"          # cross-tenant template not resolved
+        assert len(FakeSmtp.sent) == 0          # nothing sent / leaked
+    finally:
+        db.close()
+
+
 def test_advance_due_runs_processes_active():
     db = SessionLocal()
     try:

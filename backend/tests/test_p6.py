@@ -86,6 +86,22 @@ def test_rbac_members_and_audit():
     assert any(x["action"] == "member.added" for x in logs.json())
 
 
+def test_admin_cannot_grant_admin_role():
+    owner = _client("o7@x.com", "RB7")
+    oh = _csrf(owner)
+    # owner makes an admin
+    owner.post("/api/members", json={"email": "adm@x.com", "password": "adminpass12", "role": "admin"}, headers=oh)
+    admin = TestClient(app)
+    admin.post("/api/auth/login", json={"email": "adm@x.com", "password": "adminpass12"})
+    ah = {"X-CSRF-Token": admin.cookies.get(settings.csrf_cookie)}
+    # admin inviting a member is allowed
+    assert admin.post("/api/members", json={"email": "m7@x.com", "password": "memberpass1", "role": "member"}, headers=ah).status_code == 201
+    # admin inviting another admin is forbidden (only owner can)
+    assert admin.post("/api/members", json={"email": "a8@x.com", "password": "adminpass12", "role": "admin"}, headers=ah).status_code == 403
+    # 'owner' role is not even accepted by the schema
+    assert owner.post("/api/members", json={"email": "o8@x.com", "password": "ownerpass12", "role": "owner"}, headers=oh).status_code == 422
+
+
 def test_billing_checkout_applies_plan_and_rbac():
     owner = _client("b@x.com", "B6")
     oh = _csrf(owner)

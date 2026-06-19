@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from html import escape
+
 from fastapi import APIRouter, Depends, Form, HTTPException, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -29,6 +31,15 @@ def _form_out(f: SignupForm) -> SignupFormOut:
 
 @router.post("", response_model=SignupFormOut, status_code=status.HTTP_201_CREATED)
 def create_form(body: SignupFormIn, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    from ..models import ContactList, SendingDomain
+    if body.list_id is not None and db.scalar(
+        select(ContactList).where(ContactList.id == body.list_id, ContactList.workspace_id == ctx.workspace.id)
+    ) is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    if body.sending_domain_id is not None and db.scalar(
+        select(SendingDomain).where(SendingDomain.id == body.sending_domain_id, SendingDomain.workspace_id == ctx.workspace.id)
+    ) is None:
+        raise HTTPException(status_code=404, detail="Sending domain not found")
     f = SignupForm(workspace_id=ctx.workspace.id, name=body.name, list_id=body.list_id,
                    sending_domain_id=body.sending_domain_id, double_optin=body.double_optin,
                    success_message=body.success_message, redirect_url=body.redirect_url)
@@ -92,7 +103,7 @@ def hosted_form(form_id: int, db: DbSession = Depends(get_db)):
         return HTMLResponse("<p>Form not found.</p>", status_code=404)
     return HTMLResponse(
         f"""<!doctype html><html><body style="font-family:sans-serif;max-width:420px;margin:64px auto">
-        <h2>{f.name}</h2>
+        <h2>{escape(f.name)}</h2>
         <form method="post" action="/f/{f.id}/submit">
           <input name="name" placeholder="Name" style="display:block;width:100%;padding:8px;margin:8px 0">
           <input name="email" type="email" required placeholder="Email" style="display:block;width:100%;padding:8px;margin:8px 0">
@@ -108,10 +119,13 @@ def submit_form(form_id: int, email: str = Form(...), name: str = Form(""), db: 
         return HTMLResponse("<p>Form not found.</p>", status_code=404)
     result = forms_service.submit(db, f, email, name)
     if result["status"] == "error":
-        return HTMLResponse(f"<p>{result.get('detail')}</p>", status_code=400)
+        return HTMLResponse(f"<p>{escape(str(result.get('detail', 'Error')))}</p>", status_code=400)
     if result["status"] == "pending":
         return HTMLResponse("<p>Almost there — check your inbox to confirm your subscription.</p>")
-    return HTMLResponse(f"<p>{f.success_message}</p>")
+    # Honor a configured redirect on success (only http/https).
+    if f.redirect_url and f.redirect_url.startswith(("http://", "https://")):
+        return RedirectResponse(f.redirect_url, status_code=303)
+    return HTMLResponse(f"<p>{escape(f.success_message)}</p>")
 
 
 @public_router.get("/f/confirm/{token}", response_class=HTMLResponse)
@@ -129,9 +143,9 @@ def archive_index(slug: str, db: DbSession = Depends(get_db)):
     campaigns = db.scalars(
         select(Campaign).where(Campaign.workspace_id == ws.id, Campaign.status == "sent").order_by(Campaign.sent_at.desc())
     ).all()
-    items = "".join(f'<li><a href="/a/{slug}/{c.id}">{c.name}</a></li>' for c in campaigns)
+    items = "".join(f'<li><a href="/a/{escape(slug)}/{c.id}">{escape(c.name)}</a></li>' for c in campaigns)
     return HTMLResponse(f"<!doctype html><html><body style='font-family:sans-serif;max-width:640px;margin:48px auto'>"
-                        f"<h1>{ws.name} — Newsletter archive</h1><ul>{items or '<li>No issues yet.</li>'}</ul></body></html>")
+                        f"<h1>{escape(ws.name)} — Newsletter archive</h1><ul>{items or '<li>No issues yet.</li>'}</ul></body></html>")
 
 
 @public_router.get("/a/{slug}/{campaign_id}", response_class=HTMLResponse)

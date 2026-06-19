@@ -48,7 +48,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if settings.rate_limit_per_minute and path.startswith(_RATE_LIMITED_PREFIXES):
             from .services.ratelimit import limiter
-            client = request.client.host if request.client else "unknown"
+            # Behind a proxy all peers share the proxy's socket IP; prefer the
+            # left-most X-Forwarded-For entry so tenants aren't collapsed into one bucket.
+            xff = request.headers.get("x-forwarded-for", "")
+            client = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
             allowed, retry = limiter.allow(client, settings.rate_limit_per_minute)
             if not allowed:
                 return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"},
@@ -120,7 +123,8 @@ def create_app() -> FastAPI:
     from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
 
-    dist = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+    dist = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+    index_html = os.path.join(dist, "index.html")
     if os.path.isdir(dist):
         assets = os.path.join(dist, "assets")
         if os.path.isdir(assets):
@@ -128,10 +132,15 @@ def create_app() -> FastAPI:
 
         @app.get("/{full_path:path}", include_in_schema=False)
         def spa(full_path: str):
-            target = os.path.join(dist, full_path)
-            if full_path and os.path.isfile(target):
-                return FileResponse(target)
-            return FileResponse(os.path.join(dist, "index.html"))  # SPA client-routing fallback
+            # Contain the resolved path inside dist: raw wire paths (curl --path-as-is,
+            # raw sockets) keep '..' segments uvicorn does NOT collapse, so os.path.join
+            # alone allows traversal to arbitrary files. Serve a real file ONLY when it
+            # resolves inside dist; otherwise fall back to index.html (SPA client routing).
+            if full_path:
+                target = os.path.realpath(os.path.join(dist, full_path))
+                if (target == dist or target.startswith(dist + os.sep)) and os.path.isfile(target):
+                    return FileResponse(target)
+            return FileResponse(index_html)
 
     return app
 

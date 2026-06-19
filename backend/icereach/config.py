@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Rate limiting (requests per IP per minute for API/public surfaces; 0 = disabled)
     rate_limit_per_minute: int = 600
 
+    # Optional shared secret for inbound ESP webhooks (?secret=...); empty = no check
+    webhook_secret: str = ""
+
     # Bounce mailbox (DSN poller) — optional in dev
     bounce_imap_host: str = ""
     bounce_imap_user: str = ""

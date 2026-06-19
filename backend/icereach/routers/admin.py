@@ -28,8 +28,9 @@ audit_router = APIRouter(prefix="/api/audit-logs", tags=["audit"])
 
 @audit_router.get("", response_model=list[AuditLogOut])
 def list_audit(ctx: AuthContext = Depends(require_role("owner", "admin")), db: DbSession = Depends(get_db), limit: int = 100):
+    limit = max(1, min(limit, 500))  # negative LIMIT is "unbounded" in SQLite — clamp
     rows = db.scalars(
-        select(AuditLog).where(AuditLog.workspace_id == ctx.workspace.id).order_by(AuditLog.id.desc()).limit(min(limit, 500))
+        select(AuditLog).where(AuditLog.workspace_id == ctx.workspace.id).order_by(AuditLog.id.desc()).limit(limit)
     ).all()
     return [AuditLogOut(id=r.id, action=r.action, target=r.target, user_id=r.user_id, meta=r.meta, created_at=r.created_at) for r in rows]
 
@@ -48,6 +49,9 @@ def list_members(ctx: AuthContext = Depends(auth_context), db: DbSession = Depen
 
 @members_router.post("", response_model=MemberOut, status_code=status.HTTP_201_CREATED)
 def add_member(body: MemberInviteIn, ctx: AuthContext = Depends(require_role("owner", "admin")), db: DbSession = Depends(get_db)):
+    # Only an owner may grant the admin role; admins can only add members.
+    if body.role == "admin" and ctx.membership.role != "owner":
+        raise HTTPException(status_code=403, detail="Only the owner can grant the admin role")
     user = db.scalar(select(User).where(User.email == body.email.lower()))
     if user is None:
         user = User(email=body.email.lower(), password_hash=hash_password(body.password))

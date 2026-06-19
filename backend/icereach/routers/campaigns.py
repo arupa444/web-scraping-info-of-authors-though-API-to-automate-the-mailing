@@ -33,8 +33,24 @@ def _owned(db: DbSession, ctx: AuthContext, campaign_id: int) -> Campaign:
     return c
 
 
+def _validate_refs(db: DbSession, ctx: AuthContext, body: CampaignIn) -> None:
+    """Reject references to another tenant's sending domain / list / segment."""
+    from ..models import ContactList, Segment, SendingDomain
+    checks = [
+        (body.sending_domain_id, SendingDomain, "Sending domain"),
+        (body.list_id, ContactList, "List"),
+        (body.segment_id, Segment, "Segment"),
+    ]
+    for rid, model, label in checks:
+        if rid is not None and db.scalar(
+            select(model).where(model.id == rid, model.workspace_id == ctx.workspace.id)
+        ) is None:
+            raise HTTPException(status_code=404, detail=f"{label} not found")
+
+
 @router.post("", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)
 def create_campaign(body: CampaignIn, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    _validate_refs(db, ctx, body)
     c = Campaign(
         workspace_id=ctx.workspace.id, name=body.name, from_name=body.from_name,
         from_email=str(body.from_email or ""), sending_domain_id=body.sending_domain_id,

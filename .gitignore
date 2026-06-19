@@ -24,3 +24,8 @@ filtered_*.csv
 .DS_Store
 .idea/
 .vscode/
+
+# Local dev databases (may contain hashes/secrets)
+*.db
+*.sqlite
+*.sqlite3

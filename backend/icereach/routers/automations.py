@@ -45,8 +45,22 @@ def _replace_steps(db: DbSession, automation: Automation, steps) -> None:
         db.add(AutomationStep(automation_id=automation.id, position=i, type=s.type, config=s.config))
 
 
+def _validate_refs(db: DbSession, ctx: AuthContext, body: AutomationIn) -> None:
+    """Reject references to another tenant's sending domain / trigger list."""
+    from ..models import ContactList, SendingDomain
+    if body.sending_domain_id is not None and db.scalar(
+        select(SendingDomain).where(SendingDomain.id == body.sending_domain_id, SendingDomain.workspace_id == ctx.workspace.id)
+    ) is None:
+        raise HTTPException(status_code=404, detail="Sending domain not found")
+    if body.trigger_list_id is not None and db.scalar(
+        select(ContactList).where(ContactList.id == body.trigger_list_id, ContactList.workspace_id == ctx.workspace.id)
+    ) is None:
+        raise HTTPException(status_code=404, detail="Trigger list not found")
+
+
 @router.post("", response_model=AutomationOut, status_code=status.HTTP_201_CREATED)
 def create_automation(body: AutomationIn, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    _validate_refs(db, ctx, body)
     a = Automation(
         workspace_id=ctx.workspace.id, name=body.name, status="draft",
         trigger_type=body.trigger_type, trigger_list_id=body.trigger_list_id,
@@ -75,6 +89,7 @@ def get_automation(automation_id: int, ctx: AuthContext = Depends(auth_context),
 def update_automation(automation_id: int, body: AutomationIn, ctx: AuthContext = Depends(auth_context),
                       db: DbSession = Depends(get_db)):
     a = _owned(db, ctx, automation_id)
+    _validate_refs(db, ctx, body)
     a.name = body.name
     a.trigger_type = body.trigger_type
     a.trigger_list_id = body.trigger_list_id

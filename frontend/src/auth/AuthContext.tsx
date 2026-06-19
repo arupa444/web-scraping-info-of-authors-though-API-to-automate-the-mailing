@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, ApiError, type Me } from "../lib/api";
+import { api, ApiError, setUnauthorizedHandler, type Me } from "../lib/api";
 
 interface AuthState {
   me: Me | null;
@@ -50,6 +50,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     })();
   }, [refresh]);
+
+  // Clear auth state on any mid-session 401 so ProtectedRoute redirects to login.
+  useEffect(() => {
+    setUnauthorizedHandler(() => setMe(null));
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await api.post<Me>("/api/auth/login", { email, password });

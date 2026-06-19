@@ -58,7 +58,12 @@ def submit(db: DbSession, form: SignupForm, email: str, name: str = "") -> dict:
         db.refresh(contact)
 
     domain = db.get(SendingDomain, form.sending_domain_id) if form.sending_domain_id else None
-    if form.double_optin and domain is not None and (domain.smtp_host or domain.api_key):
+    if form.double_optin:
+        # Double opt-in must NOT subscribe until confirmed. If no transport is
+        # configured we can't send the confirmation — keep the contact pending and
+        # signal a configuration problem rather than silently subscribing.
+        if domain is None or not (domain.smtp_host or domain.api_key):
+            return {"status": "pending", "detail": "confirmation email not configured"}
         link = f"{settings.base_url}/f/confirm/{make_token(form.id, email, name)}"
         html = f'<p>Please confirm your subscription:</p><p><a href="{link}">Confirm subscription</a></p>'
         try:
@@ -71,7 +76,7 @@ def submit(db: DbSession, form: SignupForm, email: str, name: str = "") -> dict:
             pass
         return {"status": "pending"}
 
-    # Single opt-in (or no domain to send confirmation): subscribe immediately.
+    # Single opt-in: subscribe immediately.
     _subscribe(db, form, contact)
     return {"status": "subscribed"}
 

@@ -5,6 +5,14 @@
 //   cookie and echoes it back in the `X-CSRF-Token` header (double-submit CSRF).
 // - Throws ApiError carrying the server's {detail} on any non-2xx response.
 
+// Centralized reaction to a mid-session 401 (expired/invalid session). The auth
+// layer registers a handler so the UI can drop to the login screen instead of
+// leaving a "logged in" shell whose every request silently fails.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn;
+}
+
 export class ApiError extends Error {
   status: number;
   detail: string;
@@ -77,6 +85,12 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
   }
 
   if (!res.ok) {
+    // A 401 on a non-auth call means the session lapsed mid-session — notify the
+    // app so it can clear auth state and redirect. (Auth endpoints handle their
+    // own 401s, e.g. wrong password, so they're excluded.)
+    if (res.status === 401 && !path.startsWith("/api/auth/") && onUnauthorized) {
+      onUnauthorized();
+    }
     const detail =
       (payload && typeof payload === "object" && "detail" in payload
         ? String((payload as { detail: unknown }).detail)
@@ -255,7 +269,7 @@ export interface ApiKey {
   id: number;
   name: string;
   prefix: string;
-  scopes: string[];
+  scopes: string; // backend stores/returns a comma-separated string
 }
 export interface ApiKeyCreated extends ApiKey {
   token: string;

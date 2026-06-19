@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -40,25 +40,24 @@ def _normalize(provider: str, body: Any) -> list[tuple[str, str, str]]:
                 continue
             etype = _SENDGRID.get(ev.get("event", ""))
             if etype:
-                out.append((etype, ev.get("email", ""), ev.get("sg_message_id", "")))
+                # SendGrid's sg_message_id is "<X-Message-Id>.<recv-time>.<...>"; we store
+                # the base X-Message-Id at send time, so key on the leading segment.
+                sg_id = (ev.get("sg_message_id", "") or "").split(".")[0]
+                out.append((etype, ev.get("email", ""), sg_id))
     return out
 
 
-def _find_message(db: DbSession, email: str, message_id: str) -> Message | None:
-    if message_id:
-        msg = db.scalar(select(Message).where(Message.message_id == message_id))
-        if msg is not None:
-            return msg
-    if email:
-        return db.scalar(
-            select(Message).join(Contact, Contact.id == Message.contact_id)
-            .where(Contact.email == email).order_by(Message.id.desc())
-        )
-    return None
+def _find_message(db: DbSession, message_id: str) -> Message | None:
+    # Resolve ONLY by the provider message id (tenant-safe). The previous
+    # email fallback was workspace-unscoped, letting an unauthenticated webhook
+    # suppress/bounce an address in any tenant that mails it — removed.
+    if not message_id:
+        return None
+    return db.scalar(select(Message).where(Message.message_id == message_id))
 
 
 def _apply(db: DbSession, etype: str, email: str, message_id: str) -> bool:
-    msg = _find_message(db, email, message_id)
+    msg = _find_message(db, message_id)
     if msg is None:
         return False
     ws = msg.workspace_id
@@ -78,6 +77,9 @@ def _apply(db: DbSession, etype: str, email: str, message_id: str) -> bool:
 
 @router.post("/{provider}")
 async def receive(provider: str, request: Request, db: DbSession = Depends(get_db)):
+    from ..config import settings
+    if settings.webhook_secret and request.query_params.get("secret") != settings.webhook_secret:
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
