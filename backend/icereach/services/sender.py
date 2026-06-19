@@ -79,6 +79,11 @@ def send_campaign(db: DbSession, job, progress) -> dict:
         ).all()
     }
 
+    from . import quota
+    from ..models import Workspace
+    workspace = db.get(Workspace, campaign.workspace_id)
+    quota_remaining = quota.remaining(db, workspace)  # None = unlimited
+
     provider = get_provider(domain)
     provider.open()
     sent = 0
@@ -86,6 +91,9 @@ def send_campaign(db: DbSession, job, progress) -> dict:
     total = len(recipients)
     try:
         for i, contact in enumerate(recipients):
+            if quota_remaining is not None and sent >= quota_remaining:
+                skipped += 1
+                continue  # monthly quota reached — skip the remainder
             if contact.email in suppressed:
                 skipped += 1
                 continue

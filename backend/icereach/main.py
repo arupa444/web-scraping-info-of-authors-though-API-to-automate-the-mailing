@@ -40,6 +40,22 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+_RATE_LIMITED_PREFIXES = ("/api/", "/v1/", "/f/", "/t/", "/u/", "/webhooks/", "/a/")
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if settings.rate_limit_per_minute and path.startswith(_RATE_LIMITED_PREFIXES):
+            from .services.ratelimit import limiter
+            client = request.client.host if request.client else "unknown"
+            allowed, retry = limiter.allow(client, settings.rate_limit_per_minute)
+            if not allowed:
+                return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"},
+                                    headers={"Retry-After": str(retry)})
+        return await call_next(request)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Dev convenience: ensure schema exists. Production uses Alembic migrations.
@@ -58,6 +74,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RateLimitMiddleware)  # outermost: shed load before anything else
 
     from .routers import api_keys, auth
     app.include_router(auth.router)
@@ -83,6 +100,13 @@ def create_app() -> FastAPI:
         from .routers.forms import hooks_router, public_router
         app.include_router(hooks_router)
         app.include_router(public_router)
+    except ModuleNotFoundError:
+        pass
+    try:
+        from .routers.admin import audit_router, billing_router, members_router
+        app.include_router(audit_router)
+        app.include_router(members_router)
+        app.include_router(billing_router)
     except ModuleNotFoundError:
         pass
 

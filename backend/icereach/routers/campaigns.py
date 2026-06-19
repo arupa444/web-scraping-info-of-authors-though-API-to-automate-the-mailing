@@ -82,6 +82,8 @@ def send(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSessi
     c.status = "scheduled"
     db.commit()
     job = enqueue(db, ctx.workspace.id, "send_campaign", {"campaign_id": c.id})
+    from ..services.audit import log as audit_log
+    audit_log(db, ctx.workspace.id, "campaign.sent", target=str(c.id), user_id=ctx.user.id)
     return {"job_id": job.id, "status_url": f"/api/jobs/{job.id}"}
 
 

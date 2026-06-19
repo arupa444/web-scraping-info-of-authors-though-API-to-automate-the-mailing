@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3-flash-preview"
 
+    # Rate limiting (requests per IP per minute for API/public surfaces; 0 = disabled)
+    rate_limit_per_minute: int = 600
+
     # Bounce mailbox (DSN poller) — optional in dev
     bounce_imap_host: str = ""
     bounce_imap_user: str = ""

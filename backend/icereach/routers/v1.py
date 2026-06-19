@@ -47,6 +47,9 @@ def list_contacts(ws: Workspace = Depends(api_key_auth), db: DbSession = Depends
 
 @router.post("/emails")
 def send_transactional(body: V1EmailIn, ws: Workspace = Depends(api_key_auth), db: DbSession = Depends(get_db)):
+    from ..services import quota
+    if quota.exceeded(db, ws):
+        raise HTTPException(status_code=429, detail="Monthly send quota exceeded")
     domain = db.scalar(select(SendingDomain).where(SendingDomain.id == body.sending_domain_id, SendingDomain.workspace_id == ws.id))
     if domain is None:
         raise HTTPException(status_code=404, detail="Sending domain not found")
