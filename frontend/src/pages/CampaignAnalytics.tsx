@@ -38,6 +38,7 @@ const METRICS: Metric[] = [
   { key: "total_clicks", label: "Total clicks" },
   { key: "ctr", label: "CTR", pct: true },
   { key: "ctor", label: "CTOR", pct: true },
+  { key: "replies", label: "Replies" },
   { key: "hard_bounce", label: "Hard bounces" },
   { key: "soft_bounce", label: "Soft bounces" },
   { key: "unsubscribes", label: "Unsubscribes" },

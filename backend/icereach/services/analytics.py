@@ -83,6 +83,9 @@ def campaign_metrics(db: Session, workspace_id: int, campaign_id: int) -> dict:
     total_clicks, unique_clicks = _event_counts("click")
     # Unsubscribes are reported as a flat count of unsubscribe events.
     unsubscribes, _ = _event_counts("unsubscribe")
+    # Replies: one event per replied-to message (see services/replies.py), so the
+    # unique count is the number of recipients who replied.
+    _, replies = _event_counts("reply")
 
     # --- Derived ratios (guard divide-by-zero -> 0.0). ----------------------
     ctr = _safe_ratio(total_clicks, sent)
@@ -106,6 +109,7 @@ def campaign_metrics(db: Session, workspace_id: int, campaign_id: int) -> dict:
         "ctr": ctr,
         "ctor": ctor,
         "unsubscribes": unsubscribes,
+        "replies": replies,
         "delivered": delivered,
         "complaints": complaints,
     }

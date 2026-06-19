@@ -216,6 +216,7 @@ export interface CampaignAnalytics {
   ctr: number;
   ctor: number;
   unsubscribes: number;
+  replies: number;
   delivered: number | null;
   complaints: number | null;
 }
@@ -251,6 +252,10 @@ export interface SendingDomain {
   smtp_port?: number | null;
   smtp_username?: string | null;
   verify_tls?: boolean;
+  reply_protocol?: string;
+  reply_host?: string;
+  reply_port?: number;
+  reply_username?: string;
 }
 export interface SendingDomainIn {
   domain: string;
@@ -261,6 +266,26 @@ export interface SendingDomainIn {
   smtp_username?: string;
   smtp_password?: string;
   verify_tls?: boolean;
+  reply_protocol?: string;
+  reply_host?: string;
+  reply_port?: number;
+  reply_username?: string;
+  reply_password?: string;
+}
+export interface SendingDomainUpdate {
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_username?: string;
+  smtp_password?: string;
+  verify_tls?: boolean;
+  reply_protocol?: string;
+  reply_host?: string;
+  reply_port?: number;
+  reply_username?: string;
+  reply_password?: string;
+}
+export function updateSendingDomain(id: number | string, body: SendingDomainUpdate) {
+  return api.patch<SendingDomain>(`/api/sending-domains/${id}`, body);
 }
 export interface SendingDomainCreated {
   domain: SendingDomain;

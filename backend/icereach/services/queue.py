@@ -169,7 +169,7 @@ def main() -> None:
     module — see the ``__main__`` guard below for why.
     """
     from . import dsn, importer, sender  # noqa: F401 — register handlers on import
-    from . import automation
+    from . import automation, replies  # noqa: F401
 
     # Dev convenience, mirroring the API: ensure the schema exists so the worker
     # doesn't crash with "no such table: jobs" when it starts before the API (or
@@ -178,16 +178,21 @@ def main() -> None:
     from ..db import Base, engine
     Base.metadata.create_all(engine)
 
-    # Advance automation journeys at most every ~30s on idle cycles.
-    _last = [0.0]
+    # On idle cycles: advance automation journeys (~30s) and poll reply
+    # mailboxes for new replies (~120s — cheap UIDL check, only new mail fetched).
+    _last_auto = [0.0]
+    _last_reply = [0.0]
 
     def _tick(db):
         now = time.monotonic()
-        if now - _last[0] >= 30:
-            _last[0] = now
+        if now - _last_auto[0] >= 30:
+            _last_auto[0] = now
             automation.advance_due_runs(db)
+        if now - _last_reply[0] >= 120:
+            _last_reply[0] = now
+            replies.poll_all(db)
 
-    print("iceReach worker starting... (send_campaign, import_contacts, poll_dsn, +automation ticks)")
+    print("iceReach worker starting... (send_campaign, import_contacts, poll_dsn, poll_replies, +automation ticks)")
     run_worker(on_idle=_tick, **_worker_kwargs_from_env())
 
 

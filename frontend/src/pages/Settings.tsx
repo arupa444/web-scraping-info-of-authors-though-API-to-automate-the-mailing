@@ -13,6 +13,7 @@ import {
   listAuditLogs,
   listMembers,
   listOutboundWebhooks,
+  updateSendingDomain,
   type ApiKey,
   type ApiKeyCreated,
   type AuditLog,
@@ -81,6 +82,124 @@ function verifyLabel(ok: boolean | undefined) {
     <span className={"verify-tag " + (ok ? "ok" : "pending")}>
       {ok ? "Verified" : "Pending"}
     </span>
+  );
+}
+
+// Per-domain reply tracking: enable POP3 polling (no paid IMAP needed) so
+// replies show up as the "Replies" metric in campaign analytics.
+function ReplyTrackingEditor({
+  domain,
+  onSaved,
+}: {
+  domain: SendingDomain;
+  onSaved: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [protocol, setProtocol] = useState(domain.reply_protocol || "");
+  const [host, setHost] = useState(domain.reply_host || "");
+  const [port, setPort] = useState(String(domain.reply_port || 995));
+  const [username, setUsername] = useState(domain.reply_username || "");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    setErr(null);
+    setMsg(null);
+    setBusy(true);
+    try {
+      await updateSendingDomain(domain.id, {
+        reply_protocol: protocol,
+        reply_host: host,
+        reply_port: Number(port) || 995,
+        reply_username: username,
+        ...(password ? { reply_password: password } : {}),
+      });
+      setMsg(protocol ? "Reply tracking saved." : "Reply tracking disabled.");
+      setPassword("");
+      onSaved();
+    } catch (e) {
+      setErr(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt">
+      <button className="btn btn-ghost btn-sm" onClick={() => setOpen(!open)}>
+        {open
+          ? "Hide reply tracking"
+          : domain.reply_protocol
+            ? "Reply tracking: POP3 ✓"
+            : "Set up reply tracking"}
+      </button>
+      {open && (
+        <div className="form mt">
+          <ErrorBanner message={err} />
+          <SuccessBanner message={msg} />
+          <div className="field-row">
+            <label className="field">
+              <span>Protocol</span>
+              <select value={protocol} onChange={(e) => setProtocol(e.target.value)}>
+                <option value="">Off</option>
+                <option value="pop3">POP3 (no paid IMAP needed)</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Host</span>
+              <input
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder="pop.zoho.in"
+              />
+            </label>
+            <label className="field">
+              <span>Port</span>
+              <input
+                type="number"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="field-row">
+            <label className="field">
+              <span>Mailbox username</span>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="team@influenceai.in"
+                autoComplete="off"
+              />
+            </label>
+            <label className="field">
+              <span>
+                Mailbox password
+                {domain.reply_protocol ? " (blank = keep current)" : ""}
+              </span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+          </div>
+          <p className="muted small">
+            POP3 only reads new mail and never deletes it. Enable POP in your
+            mailbox provider (e.g. Zoho → Settings → Mail Accounts → POP), then
+            replies show up as the <strong>Replies</strong> metric in analytics.
+          </p>
+          <div className="actions-row">
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={save}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -355,6 +474,7 @@ function SendingDomains() {
                     </table>
                   </div>
                 )}
+                <ReplyTrackingEditor domain={d} onSaved={load} />
               </li>
             ))}
           </ul>

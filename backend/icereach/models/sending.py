@@ -33,6 +33,16 @@ class SendingDomain(Base, TimestampMixin, WorkspaceScopedMixin):
     dkim_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     dmarc_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending|verified
+    # Reply tracking: poll a mailbox for replies and match them to sent messages.
+    # "" disables it; "pop3" is the cheap, IMAP-free option. Polling fetches UIDLs
+    # and only downloads messages it hasn't processed (see services/replies.py).
+    reply_protocol: Mapped[str] = mapped_column(String(10), default="", nullable=False)  # ""|pop3|imap
+    reply_host: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    reply_port: Mapped[int] = mapped_column(Integer, default=995, nullable=False)
+    reply_username: Mapped[str] = mapped_column(String(320), default="", nullable=False)
+    reply_password: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # UIDs already downloaded, so POP3 never re-fetches the same message.
+    reply_seen_uids: Mapped[Any] = mapped_column(JSON, default=list, nullable=False)
 
 
 class Template(Base, TimestampMixin, WorkspaceScopedMixin):
