@@ -34,6 +34,9 @@ _VERIFIED_HOSTS = frozenset(
         "smtp.gmail.com",
         "smtp.office365.com",
         "smtp.mail.yahoo.com",
+        "smtp.zoho.in",
+        "smtp.zoho.com",
+        "smtp.zoho.eu",
     }
 )
 
