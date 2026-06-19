@@ -70,3 +70,59 @@ def test_send_requires_audience_and_domain():
     camp_id = c.post("/api/campaigns", json={"name": "Empty", "variants": [{"subject": "s", "html": "h"}]}, headers=h).json()["id"]
     r = c.post(f"/api/campaigns/{camp_id}/send", headers=h)
     assert r.status_code == 400
+
+
+def test_campaign_marked_failed_when_all_sends_fail(monkeypatch):
+    # Every recipient send raises -> campaign must NOT show as 'sent'.
+    class _Boom(_FakeSmtp):
+        def send(self, *a, **k):
+            raise RuntimeError("smtp blew up")
+    monkeypatch.setattr(esp, "SmtpSession", _Boom)
+    c = _client("cf3@x.com", "CF3")
+    h = _csrf(c)
+    dom = c.post("/api/sending-domains", json={"domain": "m.acme.com", "smtp_host": "smtp.acme.com"}, headers=h).json()["domain"]["id"]
+    cid = c.post("/api/contacts", json={"email": "z@t.com", "name": "Z"}, headers=h).json()["id"]
+    lid = c.post("/api/lists", json={"name": "L"}, headers=h).json()["id"]
+    c.post(f"/api/lists/{lid}/contacts", json={"contact_ids": [cid]}, headers=h)
+    camp_id = c.post("/api/campaigns", json={
+        "name": "Doomed", "from_name": "A", "from_email": "a@m.acme.com",
+        "sending_domain_id": dom, "list_id": lid,
+        "variants": [{"subject": "s", "html": "<p>h</p>"}],
+    }, headers=h).json()["id"]
+    c.post(f"/api/campaigns/{camp_id}/send", headers=h)
+    db = SessionLocal()
+    try:
+        queue.run_job(db, queue.claim_next(db))
+    finally:
+        db.close()
+    assert c.get(f"/api/campaigns/{camp_id}").json()["status"] == "failed"
+
+
+def test_create_campaign_with_multiple_templates_seeds_one_variant_each():
+    c = _client("cf4@x.com", "CF4")
+    h = _csrf(c)
+    t1 = c.post("/api/templates", json={"name": "T1", "subject": "One", "blocks": [{"type": "text", "html": "<p>1</p>"}]}, headers=h).json()["id"]
+    t2 = c.post("/api/templates", json={"name": "T2", "subject": "Two", "blocks": [{"type": "text", "html": "<p>2</p>"}]}, headers=h).json()["id"]
+    camp = c.post("/api/campaigns", json={"name": "Multi", "template_ids": [t1, t2]}, headers=h).json()
+    subjects = sorted(v["subject"] for v in camp["variants"])
+    assert subjects == ["One", "Two"]
+
+
+def test_duplicate_campaign_to_new_list():
+    c = _client("cf5@x.com", "CF5")
+    h = _csrf(c)
+    dom = c.post("/api/sending-domains", json={"domain": "m.acme.com", "smtp_host": "smtp.acme.com"}, headers=h).json()["domain"]["id"]
+    list_a = c.post("/api/lists", json={"name": "A"}, headers=h).json()["id"]
+    list_b = c.post("/api/lists", json={"name": "B"}, headers=h).json()["id"]
+    src = c.post("/api/campaigns", json={
+        "name": "Orig", "sending_domain_id": dom, "list_id": list_a,
+        "variants": [{"subject": "s", "html": "<p>h</p>"}],
+    }, headers=h).json()
+    dup = c.post(f"/api/campaigns/{src['id']}/duplicate", json={"list_id": list_b}, headers=h)
+    assert dup.status_code == 201, dup.text
+    body = dup.json()
+    assert body["id"] != src["id"]
+    assert body["status"] == "draft"
+    assert body["list_id"] == list_b               # re-targeted
+    assert body["sending_domain_id"] == dom        # sender settings copied
+    assert len(body["variants"]) == 1 and body["variants"][0]["subject"] == "s"

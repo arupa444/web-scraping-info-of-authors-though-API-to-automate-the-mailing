@@ -137,7 +137,9 @@ def send_campaign(db: DbSession, job, progress) -> dict:
             db.commit()
             if total:
                 progress((i + 1) / total * 100, f"Sent {sent}/{total}")
-        campaign.status = "sent"
+        # Reflect the real outcome: if there were recipients but none went out,
+        # the campaign failed — don't paint it green as "sent".
+        campaign.status = "failed" if (total > 0 and sent == 0) else "sent"
         campaign.sent_at = datetime.utcnow()
         db.commit()
     except Exception:

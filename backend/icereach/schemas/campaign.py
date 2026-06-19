@@ -20,7 +20,17 @@ class CampaignIn(BaseModel):
     list_id: int | None = None
     segment_id: int | None = None
     template_id: int | None = None
+    # Seed one variant per template (multi-template campaigns). Combined with
+    # `variants`; `template_id` is kept for backward compatibility.
+    template_ids: list[int] = Field(default_factory=list)
     variants: list[VariantIn] = Field(default_factory=list)
+
+
+class CampaignDuplicateIn(BaseModel):
+    """Optional overrides when cloning a campaign (e.g. send to a different list)."""
+    name: str | None = None
+    list_id: int | None = None
+    segment_id: int | None = None
 
 
 class CampaignOut(BaseModel):

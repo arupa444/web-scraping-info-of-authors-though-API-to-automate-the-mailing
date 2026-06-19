@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from ..db import get_db
 from ..models import Campaign, CampaignVariant
-from ..schemas.campaign import CampaignIn, CampaignOut, VariantIn, VariantOut
+from ..schemas.campaign import CampaignDuplicateIn, CampaignIn, CampaignOut, VariantIn, VariantOut
 from ..security.deps import AuthContext, auth_context
 from ..services import sender  # noqa: F401 — registers the send_campaign handler
 from ..services.analytics import campaign_metrics, variant_breakdown
@@ -61,13 +61,16 @@ def create_campaign(body: CampaignIn, ctx: AuthContext = Depends(auth_context), 
     db.add(c)
     db.flush()
     variants = list(body.variants)
-    # Seed a variant from a template when none were supplied explicitly.
-    if not variants and body.template_id is not None:
+    # Seed one variant per chosen template (multi-template). `template_id` stays
+    # supported as the single-template shorthand.
+    template_ids = list(body.template_ids) or ([body.template_id] if body.template_id is not None else [])
+    if template_ids:
         from ..models import Template
-        tpl = db.scalar(select(Template).where(Template.id == body.template_id, Template.workspace_id == ctx.workspace.id))
-        if tpl is None:
-            raise HTTPException(status_code=404, detail="Template not found")
-        variants = [VariantIn(subject=tpl.subject, html=tpl.html, text=tpl.text)]
+        for tid in template_ids:
+            tpl = db.scalar(select(Template).where(Template.id == tid, Template.workspace_id == ctx.workspace.id))
+            if tpl is None:
+                raise HTTPException(status_code=404, detail=f"Template {tid} not found")
+            variants.append(VariantIn(subject=tpl.subject, html=tpl.html, text=tpl.text))
     for v in variants:
         db.add(CampaignVariant(campaign_id=c.id, subject=v.subject, html=v.html, text=v.text, weight=v.weight))
     db.commit()
@@ -84,6 +87,40 @@ def list_campaigns(ctx: AuthContext = Depends(auth_context), db: DbSession = Dep
 @router.get("/{campaign_id}", response_model=CampaignOut)
 def get_campaign(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
     return _out(db, _owned(db, ctx, campaign_id))
+
+
+@router.post("/{campaign_id}/duplicate", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)
+def duplicate_campaign(campaign_id: int, body: CampaignDuplicateIn, ctx: AuthContext = Depends(auth_context),
+                       db: DbSession = Depends(get_db)):
+    """Clone a campaign into a fresh draft so it can be re-sent (e.g. to another
+    list). Variants and sender settings are copied; the audience can be changed."""
+    src = _owned(db, ctx, campaign_id)
+    from ..models import ContactList, Segment
+    # Validate any new audience refs belong to this workspace.
+    if body.list_id is not None and db.scalar(
+        select(ContactList).where(ContactList.id == body.list_id, ContactList.workspace_id == ctx.workspace.id)
+    ) is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    if body.segment_id is not None and db.scalar(
+        select(Segment).where(Segment.id == body.segment_id, Segment.workspace_id == ctx.workspace.id)
+    ) is None:
+        raise HTTPException(status_code=404, detail="Segment not found")
+
+    new_audience = body.list_id is not None or body.segment_id is not None
+    dup = Campaign(
+        workspace_id=ctx.workspace.id, name=body.name or f"{src.name} (copy)",
+        from_name=src.from_name, from_email=src.from_email, sending_domain_id=src.sending_domain_id,
+        list_id=body.list_id if new_audience else src.list_id,
+        segment_id=body.segment_id if new_audience else src.segment_id,
+        status="draft",
+    )
+    db.add(dup)
+    db.flush()
+    for v in db.scalars(select(CampaignVariant).where(CampaignVariant.campaign_id == src.id)).all():
+        db.add(CampaignVariant(campaign_id=dup.id, subject=v.subject, html=v.html, text=v.text, weight=v.weight))
+    db.commit()
+    db.refresh(dup)
+    return _out(db, dup)
 
 
 @router.post("/{campaign_id}/send")

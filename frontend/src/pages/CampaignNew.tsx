@@ -115,9 +115,16 @@ export default function CampaignNew() {
         getTemplate(id),
         renderTemplate(id),
       ]);
-      updateVariant(0, { subject: tmpl.subject, html: rendered.html });
+      const newVar = { subject: tmpl.subject, html: rendered.html, weight: 1 };
+      setVariants((prev) =>
+        // Replace the initial blank variant; otherwise append a new one.
+        prev.length === 1 && !prev[0].subject && !prev[0].html
+          ? [newVar]
+          : [...prev, newVar],
+      );
       if (!name) setName(tmpl.name);
-      setNotice("Loaded subject and body into variant A.");
+      setNotice(`Added "${tmpl.name}" as a variant.`);
+      setTemplateId(""); // reset so another template can be added
     } catch (err) {
       setError(errMessage(err));
     } finally {
@@ -242,13 +249,13 @@ export default function CampaignNew() {
         <Card title="Details">
           <form onSubmit={onSave} className="form" id="campaign-form">
             <label className="field">
-              <span>Start from template (optional)</span>
+              <span>Add a template as a variant (pick more than one)</span>
               <select
                 value={templateId}
                 onChange={(e) => onPickTemplate(e.target.value)}
                 disabled={templateBusy}
               >
-                <option value="">— Blank —</option>
+                <option value="">— Choose a template to add —</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
@@ -257,7 +264,12 @@ export default function CampaignNew() {
               </select>
               {templateBusy ? (
                 <span className="muted small">Loading template…</span>
-              ) : null}
+              ) : (
+                <span className="muted small">
+                  Each template you add becomes a variant below — recipients are
+                  split across them by weight.
+                </span>
+              )}
             </label>
             <label className="field">
               <span>Campaign name</span>
