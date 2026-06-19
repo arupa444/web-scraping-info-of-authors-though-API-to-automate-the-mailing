@@ -135,14 +135,22 @@ export default function Campaigns() {
                     </td>
                     <td className="row-actions">
                       {canSend(c.status) && (
-                        <button
-                          className="btn btn-primary btn-sm"
-                          disabled={busyId === c.id}
-                          onClick={() => onSend(c)}
-                          title="Send this campaign"
-                        >
-                          {busyId === c.id ? "Sending…" : "Send"}
-                        </button>
+                        <>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            disabled={busyId === c.id}
+                            onClick={() => onSend(c)}
+                            title="Send this campaign"
+                          >
+                            {busyId === c.id ? "Sending…" : "Send"}
+                          </button>
+                          <Link
+                            to={`/campaigns/${c.id}/edit`}
+                            className="btn btn-ghost btn-sm"
+                          >
+                            Edit
+                          </Link>
+                        </>
                       )}
                       <button
                         className="btn btn-ghost btn-sm"

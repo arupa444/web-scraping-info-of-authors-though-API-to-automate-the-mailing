@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   api,
@@ -34,6 +34,8 @@ interface VariantDraft {
 
 export default function CampaignNew() {
   const navigate = useNavigate();
+  const params = useParams();
+  const editId = params.id; // present => editing an existing campaign
 
   const [lists, setLists] = useState<List[]>([]);
   const [domains, setDomains] = useState<SendingDomain[]>([]);
@@ -99,11 +101,29 @@ export default function CampaignNew() {
         setLists(l);
         setDomains(d);
         setTemplates(t);
+        if (editId) {
+          const c = await api.get<Campaign>(`/api/campaigns/${editId}`);
+          setName(c.name);
+          setFromName(c.from_name);
+          setFromEmail(c.from_email);
+          setDomainId(c.sending_domain_id ? String(c.sending_domain_id) : "");
+          setListId(c.list_id ? String(c.list_id) : "");
+          if (c.variants?.length) {
+            setVariants(
+              c.variants.map((v) => ({
+                subject: v.subject,
+                html: v.html,
+                weight: v.weight ?? 1,
+              })),
+            );
+          }
+          setSaved(c); // already exists => send is available
+        }
       } catch (err) {
         setError(errMessage(err));
       }
     })();
-  }, []);
+  }, [editId]);
 
   async function onPickTemplate(id: string) {
     setTemplateId(id);
@@ -138,7 +158,7 @@ export default function CampaignNew() {
     setNotice(null);
     setSaving(true);
     try {
-      const created = await api.post<Campaign>("/api/campaigns", {
+      const payload = {
         name,
         from_name: fromName,
         from_email: fromEmail || undefined,
@@ -149,9 +169,12 @@ export default function CampaignNew() {
           html: v.html,
           weight: v.weight,
         })),
-      });
-      setSaved(created);
-      setNotice("Campaign saved. You can now send it.");
+      };
+      const result = editId
+        ? await api.patch<Campaign>(`/api/campaigns/${editId}`, payload)
+        : await api.post<Campaign>("/api/campaigns", payload);
+      setSaved(result);
+      setNotice(editId ? "Campaign updated." : "Campaign saved. You can now send it.");
     } catch (err) {
       setError(errMessage(err));
     } finally {
@@ -239,7 +262,7 @@ export default function CampaignNew() {
   return (
     <div>
       <PageHeader
-        title="New campaign"
+        title={editId ? "Edit campaign" : "New campaign"}
         subtitle="Compose your email, get AI assistance, then send."
       />
       <ErrorBanner message={error} />

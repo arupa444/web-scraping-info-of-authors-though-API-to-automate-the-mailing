@@ -97,7 +97,7 @@ function ReplyTrackingEditor({
   const [open, setOpen] = useState(false);
   const [protocol, setProtocol] = useState(domain.reply_protocol || "");
   const [host, setHost] = useState(domain.reply_host || "");
-  const [port, setPort] = useState(String(domain.reply_port || 995));
+  const [port, setPort] = useState(String(domain.reply_port || 993));
   const [username, setUsername] = useState(domain.reply_username || "");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -132,7 +132,7 @@ function ReplyTrackingEditor({
         {open
           ? "Hide reply tracking"
           : domain.reply_protocol
-            ? "Reply tracking: POP3 ✓"
+            ? `Reply tracking: ${domain.reply_protocol.toUpperCase()} ✓`
             : "Set up reply tracking"}
       </button>
       {open && (
@@ -142,9 +142,19 @@ function ReplyTrackingEditor({
           <div className="field-row">
             <label className="field">
               <span>Protocol</span>
-              <select value={protocol} onChange={(e) => setProtocol(e.target.value)}>
+              <select
+                value={protocol}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setProtocol(v);
+                  // Sensible default port per protocol (only if still at a default).
+                  if (v === "imap" && (port === "995" || port === "")) setPort("993");
+                  if (v === "pop3" && (port === "993" || port === "")) setPort("995");
+                }}
+              >
                 <option value="">Off</option>
-                <option value="pop3">POP3 (no paid IMAP needed)</option>
+                <option value="imap">IMAP (recommended)</option>
+                <option value="pop3">POP3</option>
               </select>
             </label>
             <label className="field">
@@ -152,7 +162,7 @@ function ReplyTrackingEditor({
               <input
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                placeholder="pop.zoho.in"
+                placeholder={protocol === "pop3" ? "pop.zoho.in" : "imap.zoho.in"}
               />
             </label>
             <label className="field">
@@ -188,9 +198,10 @@ function ReplyTrackingEditor({
             </label>
           </div>
           <p className="muted small">
-            POP3 only reads new mail and never deletes it. Enable POP in your
-            mailbox provider (e.g. Zoho → Settings → Mail Accounts → POP), then
-            replies show up as the <strong>Replies</strong> metric in analytics.
+            IMAP fetches only new messages (read-only — it never marks your mail
+            as read or deletes it). Enable IMAP/POP in your mailbox provider
+            (e.g. Zoho → Settings → Mail Accounts), then replies show up as the{" "}
+            <strong>Replies</strong> metric in campaign analytics.
           </p>
           <div className="actions-row">
             <button className="btn btn-primary btn-sm" disabled={busy} onClick={save}>

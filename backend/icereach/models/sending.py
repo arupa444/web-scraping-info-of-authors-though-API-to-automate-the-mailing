@@ -34,15 +34,19 @@ class SendingDomain(Base, TimestampMixin, WorkspaceScopedMixin):
     dmarc_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending|verified
     # Reply tracking: poll a mailbox for replies and match them to sent messages.
-    # "" disables it; "pop3" is the cheap, IMAP-free option. Polling fetches UIDLs
-    # and only downloads messages it hasn't processed (see services/replies.py).
-    reply_protocol: Mapped[str] = mapped_column(String(10), default="", nullable=False)  # ""|pop3|imap
+    # "" disables it; "imap" (default) fetches only NEW messages incrementally;
+    # "pop3" is also supported. See services/replies.py.
+    reply_protocol: Mapped[str] = mapped_column(String(10), default="", nullable=False)  # ""|imap|pop3
     reply_host: Mapped[str] = mapped_column(String(255), default="", nullable=False)
-    reply_port: Mapped[int] = mapped_column(Integer, default=995, nullable=False)
+    reply_port: Mapped[int] = mapped_column(Integer, default=993, nullable=False)
     reply_username: Mapped[str] = mapped_column(String(320), default="", nullable=False)
     reply_password: Mapped[str] = mapped_column(Text, default="", nullable=False)
-    # UIDs already downloaded, so POP3 never re-fetches the same message.
+    # POP3: UIDs already downloaded, so it never re-fetches the same message.
     reply_seen_uids: Mapped[Any] = mapped_column(JSON, default=list, nullable=False)
+    # IMAP: high-water mark — only fetch messages with UID greater than this.
+    # uidvalidity guards against the mailbox being recreated server-side.
+    reply_last_uid: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reply_uidvalidity: Mapped[str] = mapped_column(String(64), default="", nullable=False)
 
 
 class Template(Base, TimestampMixin, WorkspaceScopedMixin):

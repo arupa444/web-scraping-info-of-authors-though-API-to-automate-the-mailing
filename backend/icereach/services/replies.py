@@ -1,5 +1,5 @@
-"""Reply tracking without an ESP: poll a sending domain's mailbox (POP3) and
-match incoming replies to the messages we sent.
+"""Reply tracking without an ESP: poll a sending domain's mailbox (IMAP by
+default, POP3 also supported) and match incoming replies to the messages we sent.
 
 A reply carries the original ``Message-ID`` in its ``In-Reply-To`` / ``References``
 headers. We sent that ``Message-ID`` (stored on ``Message.message_id``), so the
@@ -126,7 +126,68 @@ def poll_domain_pop3(db: DbSession, domain: SendingDomain) -> int:  # pragma: no
     return recorded
 
 
+def poll_domain_imap(db: DbSession, domain: SendingDomain) -> int:  # pragma: no cover - network
+    """Fetch only NEW messages from the domain's IMAP mailbox and record replies.
+
+    Frugal + non-intrusive:
+    * SELECT is read-only, so we never set the ``\\Seen`` flag on the user's mail;
+    * we keep a per-domain UID high-water mark and ``UID SEARCH UID <last+1>:*``,
+      so only messages newer than last poll are considered;
+    * we FETCH only the ``In-Reply-To``/``References`` headers with ``BODY.PEEK``
+      (no bodies, no flag changes) — tiny payloads;
+    * UIDVALIDITY is checked; if the server recreated the mailbox we reset.
+    """
+    import imaplib
+    import re as _re
+
+    M = imaplib.IMAP4_SSL(domain.reply_host, domain.reply_port or 993)
+    recorded = 0
+    try:
+        M.login(domain.reply_username, domain.reply_password)
+        M.select("INBOX", readonly=True)  # readonly => never marks mail as read
+
+        _, uidv_data = M.status("INBOX", "(UIDVALIDITY)")
+        m = _re.search(rb"UIDVALIDITY\s+(\d+)", uidv_data[0] or b"")
+        uidvalidity = m.group(1).decode() if m else ""
+        last_uid = domain.reply_last_uid or 0
+        if uidvalidity and domain.reply_uidvalidity and uidvalidity != domain.reply_uidvalidity:
+            last_uid = 0  # mailbox recreated server-side — start fresh
+
+        _, search = M.uid("search", None, f"UID {last_uid + 1}:*")
+        uids = [int(x) for x in (search[0].split() if search and search[0] else [])]
+        max_uid = last_uid
+        for uid in sorted(uids):
+            if uid <= last_uid:
+                continue  # "n:*" can echo the last message even when none are new
+            try:
+                _, fetched = M.uid(
+                    "fetch", str(uid),
+                    "(BODY.PEEK[HEADER.FIELDS (IN-REPLY-TO REFERENCES)])",
+                )
+                raw = b""
+                for part in fetched or []:
+                    if isinstance(part, tuple) and len(part) > 1:
+                        raw = part[1]
+                        break
+                if record_reply(db, domain.workspace_id, extract_reply_targets(raw)):
+                    recorded += 1
+                max_uid = max(max_uid, uid)
+            except Exception:  # noqa: BLE001 — one bad message must not abort the batch
+                db.rollback()
+        domain.reply_last_uid = max_uid
+        domain.reply_uidvalidity = uidvalidity or domain.reply_uidvalidity
+        db.commit()
+    finally:
+        try:
+            M.logout()
+        except Exception:  # noqa: BLE001
+            pass
+    return recorded
+
+
 def poll_domain(db: DbSession, domain: SendingDomain) -> int:  # pragma: no cover - dispatch
+    if domain.reply_protocol == "imap":
+        return poll_domain_imap(db, domain)
     if domain.reply_protocol == "pop3":
         return poll_domain_pop3(db, domain)
     return 0

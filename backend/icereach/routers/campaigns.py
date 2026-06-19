@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DbSession
 
 from ..db import get_db
@@ -50,6 +50,20 @@ def _validate_refs(db: DbSession, ctx: AuthContext, body: CampaignIn) -> None:
             raise HTTPException(status_code=404, detail=f"{label} not found")
 
 
+def _resolve_variants(db: DbSession, ctx: AuthContext, body: CampaignIn) -> list[VariantIn]:
+    """Explicit variants plus one seeded per chosen template (multi-template)."""
+    variants = list(body.variants)
+    template_ids = list(body.template_ids) or ([body.template_id] if body.template_id is not None else [])
+    if template_ids:
+        from ..models import Template
+        for tid in template_ids:
+            tpl = db.scalar(select(Template).where(Template.id == tid, Template.workspace_id == ctx.workspace.id))
+            if tpl is None:
+                raise HTTPException(status_code=404, detail=f"Template {tid} not found")
+            variants.append(VariantIn(subject=tpl.subject, html=tpl.html, text=tpl.text))
+    return variants
+
+
 @router.post("", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)
 def create_campaign(body: CampaignIn, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
     _validate_refs(db, ctx, body)
@@ -60,18 +74,7 @@ def create_campaign(body: CampaignIn, ctx: AuthContext = Depends(auth_context), 
     )
     db.add(c)
     db.flush()
-    variants = list(body.variants)
-    # Seed one variant per chosen template (multi-template). `template_id` stays
-    # supported as the single-template shorthand.
-    template_ids = list(body.template_ids) or ([body.template_id] if body.template_id is not None else [])
-    if template_ids:
-        from ..models import Template
-        for tid in template_ids:
-            tpl = db.scalar(select(Template).where(Template.id == tid, Template.workspace_id == ctx.workspace.id))
-            if tpl is None:
-                raise HTTPException(status_code=404, detail=f"Template {tid} not found")
-            variants.append(VariantIn(subject=tpl.subject, html=tpl.html, text=tpl.text))
-    for v in variants:
+    for v in _resolve_variants(db, ctx, body):
         db.add(CampaignVariant(campaign_id=c.id, subject=v.subject, html=v.html, text=v.text, weight=v.weight))
     db.commit()
     db.refresh(c)
@@ -87,6 +90,30 @@ def list_campaigns(ctx: AuthContext = Depends(auth_context), db: DbSession = Dep
 @router.get("/{campaign_id}", response_model=CampaignOut)
 def get_campaign(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
     return _out(db, _owned(db, ctx, campaign_id))
+
+
+@router.patch("/{campaign_id}", response_model=CampaignOut)
+def update_campaign(campaign_id: int, body: CampaignIn, ctx: AuthContext = Depends(auth_context),
+                    db: DbSession = Depends(get_db)):
+    """Edit a campaign's details + variants. Blocked while it is in flight."""
+    c = _owned(db, ctx, campaign_id)
+    if c.status in ("scheduled", "sending"):
+        raise HTTPException(status_code=409, detail=f"Campaign is {c.status}; cannot edit now")
+    _validate_refs(db, ctx, body)
+    variants = _resolve_variants(db, ctx, body)
+    c.name = body.name
+    c.from_name = body.from_name
+    c.from_email = str(body.from_email or "")
+    c.sending_domain_id = body.sending_domain_id
+    c.list_id = body.list_id
+    c.segment_id = body.segment_id
+    # Replace the variant set with the submitted one.
+    db.execute(delete(CampaignVariant).where(CampaignVariant.campaign_id == c.id))
+    for v in variants:
+        db.add(CampaignVariant(campaign_id=c.id, subject=v.subject, html=v.html, text=v.text, weight=v.weight))
+    db.commit()
+    db.refresh(c)
+    return _out(db, c)
 
 
 @router.post("/{campaign_id}/duplicate", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)

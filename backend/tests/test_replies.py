@@ -1,5 +1,6 @@
 """Reply tracking: matching incoming replies to sent messages + the smart
-POP3 poller that downloads each message at most once."""
+IMAP/POP3 pollers that fetch each message at most once."""
+import imaplib
 import poplib
 
 from icereach.db import SessionLocal
@@ -103,6 +104,70 @@ def test_pop3_poll_downloads_each_message_once(monkeypatch):
         # Second poll: nothing new -> NO retr calls (no re-download), no double count.
         assert replies.poll_domain_pop3(db, dom) == 0
         assert _FakePOP3.instances[1].retr_calls == []
+        assert campaign_metrics(db, ws_id, camp_id)["replies"] == 1
+    finally:
+        db.close()
+
+
+class _FakeIMAP:
+    """Mailbox with UID 5 = a reply, UID 7 = unrelated. Records fetched UIDs."""
+    instances: list = []
+
+    def __init__(self, host, port):
+        self.fetched: list[int] = []
+        self.readonly = None
+        _FakeIMAP.instances.append(self)
+
+    def login(self, u, p): pass
+
+    def select(self, mailbox, readonly=False):
+        self.readonly = readonly
+        return ("OK", [b"2"])
+
+    def status(self, mailbox, what):
+        return ("OK", [b"INBOX (UIDVALIDITY 99)"])
+
+    def uid(self, command, *args):
+        if command == "search":
+            start = int(args[1].split()[1].split(":")[0])
+            present = [5, 7]
+            hits = [u for u in present if u >= start] or [max(present)]  # echo last like real servers
+            return ("OK", [" ".join(str(u) for u in hits).encode()])
+        if command == "fetch":
+            uid = int(args[0])
+            self.fetched.append(uid)
+            raw = (b"In-Reply-To: " + SENT_MID.encode() + b"\r\n\r\n") if uid == 5 else b"Subject: x\r\n\r\n"
+            return ("OK", [(f"{uid} (...)".encode(), raw), b")"])
+        return ("OK", [b""])
+
+    def logout(self): pass
+
+
+def test_imap_poll_is_incremental_and_readonly(monkeypatch):
+    ws_id, camp_id, _ = _seed()
+    _FakeIMAP.instances = []
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", _FakeIMAP)
+
+    db = SessionLocal()
+    try:
+        dom = SendingDomain(
+            workspace_id=ws_id, domain="influenceai.in",
+            dkim_private_key="x", dkim_public_key="y",
+            reply_protocol="imap", reply_host="imap.zoho.in", reply_port=993,
+            reply_username="team@influenceai.in", reply_password="secret",
+        )
+        db.add(dom)
+        db.commit()
+
+        # First poll: UIDs 5 & 7 are new -> both fetched, one reply recorded.
+        assert replies.poll_domain_imap(db, dom) == 1
+        assert _FakeIMAP.instances[0].readonly is True       # never marks mail read
+        assert sorted(_FakeIMAP.instances[0].fetched) == [5, 7]
+        assert dom.reply_last_uid == 7 and dom.reply_uidvalidity == "99"
+
+        # Second poll: search echoes UID 7 (<= high-water) -> skipped, nothing fetched.
+        assert replies.poll_domain_imap(db, dom) == 0
+        assert _FakeIMAP.instances[1].fetched == []
         assert campaign_metrics(db, ws_id, camp_id)["replies"] == 1
     finally:
         db.close()

@@ -108,6 +108,43 @@ def test_create_campaign_with_multiple_templates_seeds_one_variant_each():
     assert subjects == ["One", "Two"]
 
 
+def test_edit_campaign_updates_fields_and_replaces_variants():
+    c = _client("cf6@x.com", "CF6")
+    h = _csrf(c)
+    lid = c.post("/api/lists", json={"name": "L"}, headers=h).json()["id"]
+    camp = c.post("/api/campaigns", json={
+        "name": "Before", "variants": [{"subject": "old", "html": "<p>old</p>"}],
+    }, headers=h).json()
+    cid = camp["id"]
+    r = c.patch(f"/api/campaigns/{cid}", json={
+        "name": "After", "list_id": lid,
+        "variants": [{"subject": "new A", "html": "<p>a</p>"}, {"subject": "new B", "html": "<p>b</p>"}],
+    }, headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["name"] == "After" and body["list_id"] == lid
+    assert sorted(v["subject"] for v in body["variants"]) == ["new A", "new B"]
+    # Persisted.
+    assert c.get(f"/api/campaigns/{cid}").json()["name"] == "After"
+
+
+def test_edit_blocked_while_in_flight(monkeypatch):
+    monkeypatch.setattr(esp, "SmtpSession", _FakeSmtp)
+    c = _client("cf7@x.com", "CF7")
+    h = _csrf(c)
+    dom = c.post("/api/sending-domains", json={"domain": "m.acme.com", "smtp_host": "smtp.acme.com"}, headers=h).json()["domain"]["id"]
+    cid = c.post("/api/contacts", json={"email": "z@t.com"}, headers=h).json()["id"]
+    lid = c.post("/api/lists", json={"name": "L"}, headers=h).json()["id"]
+    c.post(f"/api/lists/{lid}/contacts", json={"contact_ids": [cid]}, headers=h)
+    camp_id = c.post("/api/campaigns", json={
+        "name": "C", "from_email": "a@m.acme.com", "sending_domain_id": dom, "list_id": lid,
+        "variants": [{"subject": "s", "html": "<p>h</p>"}],
+    }, headers=h).json()["id"]
+    c.post(f"/api/campaigns/{camp_id}/send", headers=h)  # -> scheduled
+    r = c.patch(f"/api/campaigns/{camp_id}", json={"name": "X", "variants": [{"subject": "s", "html": "h"}]}, headers=h)
+    assert r.status_code == 409
+
+
 def test_duplicate_campaign_to_new_list():
     c = _client("cf5@x.com", "CF5")
     h = _csrf(c)
