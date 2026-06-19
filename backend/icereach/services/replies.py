@@ -25,11 +25,41 @@ import email
 import re
 from email import policy
 
+from itsdangerous import BadSignature, URLSafeSerializer
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
+from ..config import settings
 from ..models import Event, Message, SendingDomain
 from .queue import register
+
+_INBOUND_SALT = "icereach.inbound"
+
+
+def inbound_token(workspace_id: int) -> str:
+    """Stable per-workspace token embedded in the inbound webhook URL."""
+    return URLSafeSerializer(settings.secret_key, salt=_INBOUND_SALT).dumps(workspace_id)
+
+
+def workspace_from_inbound_token(token: str) -> int:
+    """Decode an inbound webhook token back to its workspace id (raises on tamper)."""
+    try:
+        wid = URLSafeSerializer(settings.secret_key, salt=_INBOUND_SALT).loads(token)
+    except BadSignature as exc:
+        raise ValueError("invalid inbound token") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError("invalid inbound token") from exc
+    if not isinstance(wid, int):
+        raise ValueError("invalid inbound token")
+    return wid
+
+
+def targets_from_headers(in_reply_to: str = "", references: str = "") -> list[str]:
+    """Reuse the message parser for raw header strings (webhook JSON fields)."""
+    if not (in_reply_to or references):
+        return []
+    blob = f"In-Reply-To: {in_reply_to}\r\nReferences: {references}\r\n\r\n"
+    return extract_reply_targets(blob.encode("utf-8", "replace"))
 
 # Cap the first sync of a large mailbox so we never download thousands at once.
 _MAX_NEW_PER_POLL = 300

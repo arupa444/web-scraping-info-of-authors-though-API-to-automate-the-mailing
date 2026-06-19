@@ -109,6 +109,34 @@ def test_pop3_poll_downloads_each_message_once(monkeypatch):
         db.close()
 
 
+def test_inbound_webhook_records_reply_from_raw_and_json():
+    from fastapi.testclient import TestClient
+    from icereach.main import app
+    from icereach.services.replies import inbound_token
+
+    ws_id, camp_id, _ = _seed()
+    token = inbound_token(ws_id)
+    c = TestClient(app)
+
+    # Raw RFC822 (e.g. a Cloudflare Email Worker POST).
+    r = c.post(f"/webhooks/inbound/{token}", content=REPLY_RAW,
+               headers={"content-type": "message/rfc822"})
+    assert r.status_code == 200 and r.json()["recorded"] is True
+
+    # JSON with direct headers (idempotent — same message, no double count).
+    r2 = c.post(f"/webhooks/inbound/{token}", json={"in_reply_to": SENT_MID})
+    assert r2.status_code == 200 and r2.json()["recorded"] is False
+
+    # A bad token is rejected.
+    assert c.post("/webhooks/inbound/not-a-token", content=REPLY_RAW).status_code == 404
+
+    db = SessionLocal()
+    try:
+        assert campaign_metrics(db, ws_id, camp_id)["replies"] == 1
+    finally:
+        db.close()
+
+
 class _FakeIMAP:
     """Mailbox with UID 5 = a reply, UID 7 = unrelated. Records fetched UIDs."""
     instances: list = []

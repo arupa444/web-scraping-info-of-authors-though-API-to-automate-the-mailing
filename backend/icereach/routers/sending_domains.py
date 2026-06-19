@@ -21,7 +21,7 @@ def _out(d: SendingDomain) -> SendingDomainOut:
         id=d.id, domain=d.domain, provider=d.provider, dkim_selector=d.dkim_selector,
         spf_verified=d.spf_verified, dkim_verified=d.dkim_verified, dmarc_verified=d.dmarc_verified,
         status=d.status, smtp_host=d.smtp_host, verify_tls=d.verify_tls,
-        reply_protocol=d.reply_protocol, reply_host=d.reply_host,
+        reply_to=d.reply_to, reply_protocol=d.reply_protocol, reply_host=d.reply_host,
         reply_port=d.reply_port, reply_username=d.reply_username,
     )
 
@@ -49,6 +49,7 @@ def create_domain(body: SendingDomainIn, ctx: AuthContext = Depends(auth_context
         smtp_host=body.smtp_host, smtp_port=body.smtp_port,
         smtp_username=body.smtp_username, smtp_password=body.smtp_password,
         verify_tls=body.verify_tls,
+        reply_to=body.reply_to,
         reply_protocol=body.reply_protocol, reply_host=body.reply_host,
         reply_port=body.reply_port, reply_username=body.reply_username,
         reply_password=body.reply_password,
@@ -70,6 +71,16 @@ def update_domain(domain_id: int, body: SendingDomainUpdate, ctx: AuthContext = 
     db.commit()
     db.refresh(d)
     return _out(d)
+
+
+@router.get("/reply-webhook")
+def reply_webhook(ctx: AuthContext = Depends(auth_context)):
+    """The workspace's inbound reply webhook URL (feed replies here for free via
+    Cloudflare Email Routing / SendGrid Inbound Parse / a mail filter)."""
+    from ..config import settings
+    from ..services.replies import inbound_token
+    token = inbound_token(ctx.workspace.id)
+    return {"url": f"{settings.base_url}/webhooks/inbound/{token}"}
 
 
 @router.get("", response_model=list[SendingDomainOut])

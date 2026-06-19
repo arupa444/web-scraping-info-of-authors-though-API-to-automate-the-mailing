@@ -24,6 +24,61 @@ _RESEND = {"email.delivered": "delivered", "email.bounced": "bounce", "email.com
 _SENDGRID = {"delivered": "delivered", "bounce": "bounce", "dropped": "bounce", "spamreport": "complaint"}
 
 
+@router.post("/inbound/{token}")
+async def inbound_reply(token: str, request: Request, db: DbSession = Depends(get_db)):
+    """Record a reply forwarded here by ANY inbound source (Cloudflare Email
+    Routing worker, SendGrid Inbound Parse, a mail filter, etc.) — the free
+    alternative to polling a paid POP/IMAP mailbox.
+
+    Accepts the reply as raw RFC822 (default), multipart form (``email``/``raw``/
+    ``headers`` field), or JSON (``raw``/``email`` or direct ``in_reply_to`` /
+    ``references``). The workspace is taken from the signed token in the URL.
+    """
+    import json as _json
+
+    from ..services.replies import (
+        extract_reply_targets,
+        record_reply,
+        targets_from_headers,
+        workspace_from_inbound_token,
+    )
+
+    try:
+        workspace_id = workspace_from_inbound_token(token)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Unknown inbound token")
+
+    ctype = request.headers.get("content-type", "").lower()
+    raw = await request.body()
+    targets: list[str] = []
+
+    if "application/json" in ctype:
+        try:
+            data = _json.loads(raw or b"{}")
+        except Exception:  # noqa: BLE001
+            data = {}
+        if isinstance(data, dict):
+            targets += targets_from_headers(
+                str(data.get("in_reply_to") or data.get("In-Reply-To") or ""),
+                str(data.get("references") or data.get("References") or ""),
+            )
+            blob = data.get("raw") or data.get("email") or data.get("message")
+            if blob:
+                targets += extract_reply_targets(blob.encode() if isinstance(blob, str) else blob)
+    elif "multipart/form-data" in ctype or "x-www-form-urlencoded" in ctype:
+        form = await request.form()
+        for key in ("email", "raw", "message", "headers"):
+            val = form.get(key)
+            if val:
+                targets += extract_reply_targets(val if isinstance(val, (bytes, bytearray)) else str(val).encode())
+    else:
+        targets += extract_reply_targets(raw)  # raw RFC822 (Cloudflare Email Worker)
+
+    targets = list(dict.fromkeys(t for t in targets if t))
+    recorded = record_reply(db, workspace_id, targets)
+    return {"recorded": bool(recorded)}
+
+
 def _normalize(provider: str, body: Any) -> list[tuple[str, str, str]]:
     """Return a list of (event_type, email, message_id) tuples."""
     out: list[tuple[str, str, str]] = []

@@ -142,6 +142,7 @@ def _send_step(db: DbSession, run: AutomationRun, automation: Automation, step: 
         msg_row.message_id = provider.send(
             from_name=automation.from_name, from_email=automation.from_email, to_email=contact.email,
             subject=subj, html=body_html, text=body_text, list_unsub_url=unsub,
+            reply_to=domain.reply_to or None,
         )
         msg_row.status = "sent"
         msg_row.sent_at = datetime.utcnow()

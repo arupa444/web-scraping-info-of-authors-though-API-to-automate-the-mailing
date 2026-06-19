@@ -126,6 +126,7 @@ def send_campaign(db: DbSession, job, progress) -> dict:
                 provider_id = provider.send(
                     from_name=campaign.from_name, from_email=campaign.from_email, to_email=contact.email,
                     subject=subject, html=html, text=text, list_unsub_url=unsub_url,
+                    reply_to=domain.reply_to or None,
                 )
                 msg_row.status = "sent"
                 msg_row.sent_at = datetime.utcnow()

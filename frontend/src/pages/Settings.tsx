@@ -11,6 +11,7 @@ import {
   getBilling,
   getPlans,
   listAuditLogs,
+  getReplyWebhook,
   listMembers,
   listOutboundWebhooks,
   updateSendingDomain,
@@ -90,11 +91,14 @@ function verifyLabel(ok: boolean | undefined) {
 function ReplyTrackingEditor({
   domain,
   onSaved,
+  inboundUrl,
 }: {
   domain: SendingDomain;
   onSaved: () => void;
+  inboundUrl: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState(domain.reply_to || "");
   const [protocol, setProtocol] = useState(domain.reply_protocol || "");
   const [host, setHost] = useState(domain.reply_host || "");
   const [port, setPort] = useState(String(domain.reply_port || 993));
@@ -110,13 +114,14 @@ function ReplyTrackingEditor({
     setBusy(true);
     try {
       await updateSendingDomain(domain.id, {
+        reply_to: replyTo,
         reply_protocol: protocol,
         reply_host: host,
-        reply_port: Number(port) || 995,
+        reply_port: Number(port) || 993,
         reply_username: username,
         ...(password ? { reply_password: password } : {}),
       });
-      setMsg(protocol ? "Reply tracking saved." : "Reply tracking disabled.");
+      setMsg("Reply settings saved.");
       setPassword("");
       onSaved();
     } catch (e) {
@@ -139,6 +144,35 @@ function ReplyTrackingEditor({
         <div className="form mt">
           <ErrorBanner message={err} />
           <SuccessBanner message={msg} />
+
+          <label className="field">
+            <span>Reply-To address</span>
+            <input
+              value={replyTo}
+              onChange={(e) => setReplyTo(e.target.value)}
+              placeholder="replies@yourdomain.com (or a free Gmail address)"
+              autoComplete="off"
+            />
+          </label>
+          <p className="muted small">
+            Replies go to this address. Since Zoho POP/IMAP need a paid plan, point
+            Reply-To at a mailbox you can read for free — see the two options below.
+          </p>
+
+          <div className="callout">
+            <strong>Option A — free Gmail inbox (easiest):</strong> set Reply-To to a
+            Gmail address, then below choose <strong>IMAP</strong> with{" "}
+            <code>imap.gmail.com:993</code> and a Gmail app password. Gmail IMAP is free.
+            <br />
+            <strong>Option B — inbound webhook (no mailbox):</strong> forward replies to
+            this URL (e.g. free Cloudflare Email Routing on a subdomain, or SendGrid
+            Inbound Parse) — they’ll be matched automatically:
+            <div className="field-row" style={{ alignItems: "center", marginTop: "6px" }}>
+              <input className="mono" readOnly value={inboundUrl} />
+              <CopyButton value={inboundUrl} />
+            </div>
+          </div>
+
           <div className="field-row">
             <label className="field">
               <span>Protocol</span>
@@ -232,13 +266,18 @@ function SendingDomains() {
 
   const [records, setRecords] = useState<Record<number, DnsRecord[]>>({});
   const [verifyBusy, setVerifyBusy] = useState<number | null>(null);
+  const [inboundUrl, setInboundUrl] = useState("");
 
   const usesApiKey = provider === "resend" || provider === "sendgrid";
 
   async function load() {
     try {
-      const d = await api.get<SendingDomain[]>("/api/sending-domains");
+      const [d, wh] = await Promise.all([
+        api.get<SendingDomain[]>("/api/sending-domains"),
+        getReplyWebhook().catch(() => ({ url: "" })),
+      ]);
       setDomains(d);
+      setInboundUrl(wh.url);
     } catch (err) {
       setError(errMessage(err));
     } finally {
@@ -485,7 +524,7 @@ function SendingDomains() {
                     </table>
                   </div>
                 )}
-                <ReplyTrackingEditor domain={d} onSaved={load} />
+                <ReplyTrackingEditor domain={d} onSaved={load} inboundUrl={inboundUrl} />
               </li>
             ))}
           </ul>

@@ -252,6 +252,7 @@ export interface SendingDomain {
   smtp_port?: number | null;
   smtp_username?: string | null;
   verify_tls?: boolean;
+  reply_to?: string;
   reply_protocol?: string;
   reply_host?: string;
   reply_port?: number;
@@ -278,6 +279,7 @@ export interface SendingDomainUpdate {
   smtp_username?: string;
   smtp_password?: string;
   verify_tls?: boolean;
+  reply_to?: string;
   reply_protocol?: string;
   reply_host?: string;
   reply_port?: number;
@@ -286,6 +288,9 @@ export interface SendingDomainUpdate {
 }
 export function updateSendingDomain(id: number | string, body: SendingDomainUpdate) {
   return api.patch<SendingDomain>(`/api/sending-domains/${id}`, body);
+}
+export function getReplyWebhook() {
+  return api.get<{ url: string }>("/api/sending-domains/reply-webhook");
 }
 export interface SendingDomainCreated {
   domain: SendingDomain;

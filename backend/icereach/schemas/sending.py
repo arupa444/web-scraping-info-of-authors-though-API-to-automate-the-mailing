@@ -12,7 +12,8 @@ class SendingDomainIn(BaseModel):
     smtp_username: str = ""
     smtp_password: str = ""
     verify_tls: bool = True
-    # Reply tracking mailbox (optional). "" disables; "pop3" recommended.
+    # Reply-To address + reply tracking mailbox (optional).
+    reply_to: str = ""
     reply_protocol: str = ""
     reply_host: str = ""
     reply_port: int = 995
@@ -27,6 +28,7 @@ class SendingDomainUpdate(BaseModel):
     smtp_username: str | None = None
     smtp_password: str | None = None
     verify_tls: bool | None = None
+    reply_to: str | None = None
     reply_protocol: str | None = None
     reply_host: str | None = None
     reply_port: int | None = None
@@ -45,7 +47,8 @@ class SendingDomainOut(BaseModel):
     dmarc_verified: bool
     status: str
     smtp_host: str
-    # Reply mailbox (password intentionally never returned).
+    # Reply settings (password intentionally never returned).
+    reply_to: str = ""
     reply_protocol: str = ""
     reply_host: str = ""
     reply_port: int = 995

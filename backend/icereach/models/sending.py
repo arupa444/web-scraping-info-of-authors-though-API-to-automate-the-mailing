@@ -36,6 +36,10 @@ class SendingDomain(Base, TimestampMixin, WorkspaceScopedMixin):
     # Reply tracking: poll a mailbox for replies and match them to sent messages.
     # "" disables it; "imap" (default) fetches only NEW messages incrementally;
     # "pop3" is also supported. See services/replies.py.
+    # Reply-To header on outbound mail. Point this at a mailbox you CAN read for
+    # free (e.g. Gmail IMAP) or a Cloudflare-routed address that feeds the
+    # inbound webhook — so replies are trackable without paid Zoho POP/IMAP.
+    reply_to: Mapped[str] = mapped_column(String(320), default="", nullable=False)
     reply_protocol: Mapped[str] = mapped_column(String(10), default="", nullable=False)  # ""|imap|pop3
     reply_host: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     reply_port: Mapped[int] = mapped_column(Integer, default=993, nullable=False)
