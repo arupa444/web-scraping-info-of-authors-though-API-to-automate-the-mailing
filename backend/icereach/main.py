@@ -17,7 +17,12 @@ from . import models  # noqa: F401
 
 # CSRF is enforced for state-changing requests authenticated by the session cookie.
 # Exempt: login/signup (no session yet) and any request bearing an API key.
-_CSRF_EXEMPT_PATHS = {"/api/auth/login", "/api/auth/signup"}
+# Login/signup mint the first CSRF cookie. `/api/templates/render` is a pure,
+# side-effect-free preview (it just turns posted blocks into HTML and returns
+# it to the caller) that the builder fires on every keystroke — gating it on
+# CSRF made the live preview intermittently 403 on a stale cookie. It still
+# requires a valid session (auth_context), so it is not publicly open.
+_CSRF_EXEMPT_PATHS = {"/api/auth/login", "/api/auth/signup", "/api/templates/render"}
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 

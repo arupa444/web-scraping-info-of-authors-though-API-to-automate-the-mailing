@@ -149,9 +149,26 @@ def run_worker(poll_interval: float = 1.0, max_idle_loops: Optional[int] = None,
             db.close()
 
 
-if __name__ == "__main__":  # pragma: no cover
-    # Import handler modules so they register with the queue, then run.
-    from . import dsn, importer, sender  # noqa: F401
+def _worker_kwargs_from_env() -> dict:
+    """Optional knobs for tests/ops, read from the environment."""
+    import os
+
+    kwargs: dict[str, Any] = {}
+    if (mi := os.environ.get("ICEREACH_WORKER_MAX_IDLE")):
+        kwargs["max_idle_loops"] = int(mi)
+    if (pi := os.environ.get("ICEREACH_WORKER_POLL")):
+        kwargs["poll_interval"] = float(pi)
+    return kwargs
+
+
+def main() -> None:
+    """Worker entrypoint: import handler modules so they register, then loop.
+
+    Handlers register into THIS module's ``HANDLERS`` dict via ``@register``.
+    Crucially this must run inside the canonical ``icereach.services.queue``
+    module — see the ``__main__`` guard below for why.
+    """
+    from . import dsn, importer, sender  # noqa: F401 — register handlers on import
     from . import automation
 
     # Advance automation journeys at most every ~30s on idle cycles.
@@ -164,4 +181,17 @@ if __name__ == "__main__":  # pragma: no cover
             automation.advance_due_runs(db)
 
     print("iceReach worker starting... (send_campaign, import_contacts, poll_dsn, +automation ticks)")
-    run_worker(on_idle=_tick)
+    run_worker(on_idle=_tick, **_worker_kwargs_from_env())
+
+
+if __name__ == "__main__":  # pragma: no cover
+    # `python -m icereach.services.queue` loads this file as `__main__`. Handler
+    # modules, however, register into `icereach.services.queue.HANDLERS` (a
+    # SEPARATE module object created when they do `from .queue import register`).
+    # If we called run_worker() from here, its run_job() would consult the empty
+    # `__main__.HANDLERS` and fail every job with "No handler registered".
+    # Delegate to the canonical module so registrations and the loop share one
+    # HANDLERS dict.
+    from icereach.services.queue import main as _main
+
+    _main()

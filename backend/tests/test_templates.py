@@ -38,6 +38,20 @@ def test_render_preview_without_save():
     assert "<table" in r.json()["html"]
 
 
+def test_render_preview_exempt_from_csrf():
+    # The live-preview builder fires this on every keystroke; gating it on CSRF
+    # made the preview flaky on a stale cookie. It is read-only, so it is CSRF-
+    # exempt — but still requires a valid session.
+    c = _client("t2b@x.com", "T2B")
+    # No X-CSRF-Token header at all -> still allowed (exempt).
+    r = c.post("/api/templates/render", json={"blocks": BLOCKS})
+    assert r.status_code == 200, r.text
+    assert "<table" in r.json()["html"]
+    # But without a session it is rejected (auth still required).
+    anon = TestClient(app)
+    assert anon.post("/api/templates/render", json={"blocks": BLOCKS}).status_code == 401
+
+
 def test_test_send_uses_smtp(monkeypatch):
     sent = []
 
