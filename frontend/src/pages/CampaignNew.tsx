@@ -3,13 +3,17 @@ import { useNavigate } from "react-router-dom";
 import {
   ApiError,
   api,
+  getTemplate,
+  listTemplates,
   pollJob,
+  renderTemplate,
   type AiCritiqueOut,
   type AiSubjectsOut,
   type Campaign,
   type Job,
   type List,
   type SendingDomain,
+  type Template,
 } from "../lib/api";
 import {
   Card,
@@ -27,6 +31,11 @@ export default function CampaignNew() {
 
   const [lists, setLists] = useState<List[]>([]);
   const [domains, setDomains] = useState<SendingDomain[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+
+  // start-from-template
+  const [templateId, setTemplateId] = useState("");
+  const [templateBusy, setTemplateBusy] = useState(false);
 
   // form fields
   const [name, setName] = useState("");
@@ -61,17 +70,40 @@ export default function CampaignNew() {
   useEffect(() => {
     (async () => {
       try {
-        const [l, d] = await Promise.all([
+        const [l, d, t] = await Promise.all([
           api.get<List[]>("/api/lists"),
           api.get<SendingDomain[]>("/api/sending-domains"),
+          listTemplates(),
         ]);
         setLists(l);
         setDomains(d);
+        setTemplates(t);
       } catch (err) {
         setError(errMessage(err));
       }
     })();
   }, []);
+
+  async function onPickTemplate(id: string) {
+    setTemplateId(id);
+    if (!id) return;
+    setError(null);
+    setTemplateBusy(true);
+    try {
+      const [tmpl, rendered] = await Promise.all([
+        getTemplate(id),
+        renderTemplate(id),
+      ]);
+      setSubject(tmpl.subject);
+      setHtml(rendered.html);
+      if (!name) setName(tmpl.name);
+      setNotice("Loaded subject and body from template.");
+    } catch (err) {
+      setError(errMessage(err));
+    } finally {
+      setTemplateBusy(false);
+    }
+  }
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -185,6 +217,24 @@ export default function CampaignNew() {
       <div className="grid-2">
         <Card title="Details">
           <form onSubmit={onSave} className="form" id="campaign-form">
+            <label className="field">
+              <span>Start from template (optional)</span>
+              <select
+                value={templateId}
+                onChange={(e) => onPickTemplate(e.target.value)}
+                disabled={templateBusy}
+              >
+                <option value="">— Blank —</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              {templateBusy ? (
+                <span className="muted small">Loading template…</span>
+              ) : null}
+            </label>
             <label className="field">
               <span>Campaign name</span>
               <input

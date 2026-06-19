@@ -11,6 +11,8 @@ import Segments from "./pages/Segments";
 import Campaigns from "./pages/Campaigns";
 import CampaignNew from "./pages/CampaignNew";
 import CampaignAnalytics from "./pages/CampaignAnalytics";
+import Templates from "./pages/Templates";
+import TemplateBuilder from "./pages/TemplateBuilder";
 import Settings from "./pages/Settings";
 
 export default function App() {
@@ -47,6 +49,9 @@ export default function App() {
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/campaigns/new" element={<CampaignNew />} />
         <Route path="/campaigns/:id/analytics" element={<CampaignAnalytics />} />
+        <Route path="/templates" element={<Templates />} />
+        <Route path="/templates/new" element={<TemplateBuilder />} />
+        <Route path="/templates/:id" element={<TemplateBuilder />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 
