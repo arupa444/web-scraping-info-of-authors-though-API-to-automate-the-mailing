@@ -69,6 +69,11 @@ class Campaign(Base, TimestampMixin, WorkspaceScopedMixin):
     segment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("segments.id"))
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Cached AI performance summary so it survives a page refresh (with a
+    # timestamp). Generated on demand via the analytics narrative endpoint.
+    ai_summary: Mapped[Optional[str]] = mapped_column(Text)
+    ai_summary_highlights: Mapped[Optional[Any]] = mapped_column(JSON)
+    ai_summary_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
 
 class CampaignVariant(Base, TimestampMixin):

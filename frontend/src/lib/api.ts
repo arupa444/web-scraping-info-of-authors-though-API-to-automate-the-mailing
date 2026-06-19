@@ -575,10 +575,16 @@ export interface CampaignVariants {
 export interface AnalyticsNarrative {
   summary: string;
   highlights: string[];
+  generated_at: string | null;
 }
 
 export function getCampaignVariants(id: number | string) {
   return api.get<CampaignVariants>(`/api/campaigns/${id}/variants`);
+}
+export function getCampaignNarrative(id: number | string) {
+  return api.get<AnalyticsNarrative>(
+    `/api/campaigns/${id}/analytics/narrative`,
+  );
 }
 export function analyticsNarrative(id: number | string) {
   return api.post<AnalyticsNarrative>(

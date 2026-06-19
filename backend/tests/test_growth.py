@@ -103,4 +103,22 @@ def test_ai_narrative_endpoint(monkeypatch):
     cid = c.post("/api/campaigns", json={"name": "C", "variants": [{"subject": "s", "html": "h"}]}, headers=h).json()["id"]
     monkeypatch.setattr(ai_service, "summarize_analytics", lambda m: {"summary": "Good open rate.", "highlights": ["x"]})
     r = c.post(f"/api/campaigns/{cid}/analytics/narrative", headers=h)
-    assert r.status_code == 200 and r.json()["summary"] == "Good open rate."
+    body = r.json()
+    assert r.status_code == 200 and body["summary"] == "Good open rate."
+    assert body["highlights"] == ["x"]
+    assert body["generated_at"]  # timestamp recorded
+
+    # Persisted: a fresh GET (as on page refresh) returns the same summary.
+    got = c.get(f"/api/campaigns/{cid}/analytics/narrative")
+    assert got.status_code == 200
+    assert got.json()["summary"] == "Good open rate."
+    assert got.json()["generated_at"] == body["generated_at"]
+
+
+def test_ai_narrative_empty_before_generation():
+    c = _client("g6@x.com", "G6")
+    h = _csrf(c)
+    cid = c.post("/api/campaigns", json={"name": "C", "variants": [{"subject": "s", "html": "h"}]}, headers=h).json()["id"]
+    got = c.get(f"/api/campaigns/{cid}/analytics/narrative")
+    assert got.status_code == 200
+    assert got.json() == {"summary": "", "highlights": [], "generated_at": None}

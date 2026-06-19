@@ -71,17 +71,19 @@ def test_rewrite_html_leaves_mailto_links_untouched():
     assert "/t/c/" not in out
 
 
-def test_is_bot_true_for_google_image_proxy():
-    ua = (
+def test_is_bot_false_for_mailbox_image_proxies():
+    # Gmail/Yahoo proxies fetch the pixel on a genuine human open, so they must
+    # NOT be treated as bots — doing so silently dropped real opens.
+    for ua in (
         "Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 "
-        "(via ggpht.com GoogleImageProxy)"
-    )
-    assert tracking.is_bot(ua) is True
+        "(via ggpht.com GoogleImageProxy)",
+        "YahooMailProxy/1.0",
+    ):
+        assert tracking.is_bot(ua) is False
 
 
-def test_is_bot_true_for_known_proxies_and_crawlers():
-    for ua in ("YahooMailProxy/1.0", "Googlebot/2.1", "bingbot/2.0",
-               "facebookexternalhit/1.1"):
+def test_is_bot_true_for_crawlers_and_preview_bots():
+    for ua in ("Googlebot/2.1", "bingbot/2.0", "facebookexternalhit/1.1"):
         assert tracking.is_bot(ua) is True
 
 

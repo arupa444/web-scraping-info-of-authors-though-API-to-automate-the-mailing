@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
@@ -115,12 +117,36 @@ def variants(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbS
     return variant_breakdown(db, ctx.workspace.id, campaign_id)
 
 
+def _narrative_payload(c: Campaign) -> dict:
+    """Serialize a campaign's cached AI summary (empty if never generated)."""
+    return {
+        "summary": c.ai_summary or "",
+        "highlights": list(c.ai_summary_highlights or []),
+        # Naive UTC in the DB; tag it as UTC so the browser localizes correctly.
+        "generated_at": (c.ai_summary_at.isoformat() + "Z") if c.ai_summary_at else None,
+    }
+
+
+@router.get("/{campaign_id}/analytics/narrative")
+def get_analytics_narrative(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    """Return the persisted AI summary so it survives a refresh."""
+    c = _owned(db, ctx, campaign_id)
+    return _narrative_payload(c)
+
+
 @router.post("/{campaign_id}/analytics/narrative")
 def analytics_narrative(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
-    _owned(db, ctx, campaign_id)
+    c = _owned(db, ctx, campaign_id)
     from ..ai import service as ai_service
     metrics = campaign_metrics(db, ctx.workspace.id, campaign_id)
     try:
-        return ai_service.summarize_analytics(metrics)
+        result = ai_service.summarize_analytics(metrics)
     except ai_service.AIDisabled as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+    # Persist so the summary (and when it was generated) survives a refresh.
+    c.ai_summary = result.get("summary", "")
+    c.ai_summary_highlights = list(result.get("highlights", []))
+    c.ai_summary_at = datetime.utcnow()
+    db.commit()
+    db.refresh(c)
+    return _narrative_payload(c)

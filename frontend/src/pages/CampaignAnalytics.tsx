@@ -4,6 +4,7 @@ import {
   ApiError,
   api,
   analyticsNarrative,
+  getCampaignNarrative,
   getCampaignVariants,
   type AnalyticsNarrative,
   type Campaign,
@@ -65,14 +66,17 @@ export default function CampaignAnalytics() {
   useEffect(() => {
     (async () => {
       try {
-        const [c, a, v] = await Promise.all([
+        const [c, a, v, n] = await Promise.all([
           api.get<Campaign>(`/api/campaigns/${id}`),
           api.get<Analytics>(`/api/campaigns/${id}/analytics`),
           getCampaignVariants(id!).catch(() => null),
+          getCampaignNarrative(id!).catch(() => null),
         ]);
         setCampaign(c);
         setData(a);
         setVariants(v);
+        // Show a previously-generated AI summary so it survives refreshes.
+        if (n && n.summary) setNarrative(n);
       } catch (err) {
         setError(errMessage(err));
       } finally {
@@ -190,7 +194,11 @@ export default function CampaignAnalytics() {
                 onClick={onGenerateNarrative}
                 disabled={narrativeBusy}
               >
-                {narrativeBusy ? "Generating…" : "Generate AI summary"}
+                {narrativeBusy
+                  ? "Generating…"
+                  : narrative
+                    ? "Regenerate"
+                    : "Generate AI summary"}
               </button>
             }
           >
@@ -207,6 +215,11 @@ export default function CampaignAnalytics() {
                       ))}
                     </ul>
                   </div>
+                )}
+                {narrative.generated_at && (
+                  <p className="muted small">
+                    Generated {new Date(narrative.generated_at).toLocaleString()}
+                  </p>
                 )}
               </div>
             ) : narrativeBusy ? (

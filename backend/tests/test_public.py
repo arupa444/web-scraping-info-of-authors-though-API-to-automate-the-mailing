@@ -46,8 +46,20 @@ def test_open_pixel_ignores_bots():
     _, _, mid = _seed_message()
     token = encode_token(mid)
     c = TestClient(app)
-    c.get(f"/t/o/{token}.png", headers={"user-agent": "GoogleImageProxy"})
+    c.get(f"/t/o/{token}.png", headers={"user-agent": "facebookexternalhit/1.1"})
     assert len(_events(mid, "open")) == 0
+
+
+def test_open_pixel_counts_gmail_image_proxy():
+    # Gmail fetches the pixel through GoogleImageProxy on a real open; it must be
+    # counted, not discarded as a bot.
+    _, _, mid = _seed_message()
+    token = encode_token(mid)
+    c = TestClient(app)
+    ua = "Mozilla/5.0 (via ggpht.com GoogleImageProxy)"
+    r = c.get(f"/t/o/{token}.png", headers={"user-agent": ua})
+    assert r.status_code == 200
+    assert len(_events(mid, "open")) == 1
 
 
 def test_click_redirects_and_records():

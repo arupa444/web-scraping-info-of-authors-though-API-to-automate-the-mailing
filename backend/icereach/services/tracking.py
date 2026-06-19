@@ -9,8 +9,8 @@ decode.
 
 ``rewrite_html`` prepares an outbound HTML body for sending: it rewrites every
 ``<a href>`` into a click-tracking redirect and appends a 1x1 open pixel.
-``is_bot`` flags known prefetch/proxy user agents (Apple MPP, mailbox image
-proxies, crawlers) whose opens must be excluded from headline metrics.
+``is_bot`` flags known link-preview bots and security scanners whose hits are
+not human opens. Mailbox image proxies (Gmail/Yahoo) are treated as real opens.
 """
 
 from __future__ import annotations
@@ -37,9 +37,15 @@ _ANCHOR_HREF = re.compile(
 
 # Common prefetch / proxy / scanner user-agent fragments. Matched
 # case-insensitively as substrings so version suffixes do not matter.
+#
+# NOTE: Gmail's "GoogleImageProxy" and "YahooMailProxy" are deliberately NOT in
+# this list. Those proxies fetch the open pixel when a human actually opens the
+# message (Gmail is the single most common client), so treating them as bots
+# discarded real opens — which is exactly why a freshly-opened email reported
+# zero opens. Apple Mail Privacy Protection genuinely over-counts opens, but its
+# requests do not carry these proxy markers, so excluding them here does not let
+# MPP back in.
 _BOT_UA_FRAGMENTS: tuple[str, ...] = (
-    "GoogleImageProxy",      # Gmail image proxy (Apple MPP-style prefetch)
-    "YahooMailProxy",        # Yahoo Mail image proxy
     "Googlebot",             # Google crawler
     "bingbot",               # Bing crawler
     "facebookexternalhit",   # Facebook link prefetch
