@@ -145,33 +145,40 @@ function ReplyTrackingEditor({
           <ErrorBanner message={err} />
           <SuccessBanner message={msg} />
 
+          <p className="muted small">
+            <strong>Recommended — IMAP:</strong> set Protocol to <strong>IMAP</strong>
+            and point it at the mailbox you send from (e.g.{" "}
+            <code>imap.zoho.in:993</code>, your mailbox login). iceReach polls it
+            read-only and counts replies. IMAP must be enabled on your mail plan.
+          </p>
+
           <label className="field">
-            <span>Reply-To address</span>
+            <span>Reply-To address (optional)</span>
             <input
               value={replyTo}
               onChange={(e) => setReplyTo(e.target.value)}
-              placeholder="replies@yourdomain.com (or a free Gmail address)"
+              placeholder="leave blank to use your From address"
               autoComplete="off"
             />
           </label>
           <p className="muted small">
-            Replies go to this address. Since Zoho POP/IMAP need a paid plan, point
-            Reply-To at a mailbox you can read for free — see the two options below.
+            Leave blank when you poll the same mailbox you send from — replies go to
+            your From address. Only set this to redirect replies somewhere else.
           </p>
 
-          <div className="callout">
-            <strong>Option A — free Gmail inbox (easiest):</strong> set Reply-To to a
-            Gmail address, then below choose <strong>IMAP</strong> with{" "}
-            <code>imap.gmail.com:993</code> and a Gmail app password. Gmail IMAP is free.
-            <br />
-            <strong>Option B — inbound webhook (no mailbox):</strong> forward replies to
-            this URL (e.g. free Cloudflare Email Routing on a subdomain, or SendGrid
-            Inbound Parse) — they’ll be matched automatically:
-            <div className="field-row" style={{ alignItems: "center", marginTop: "6px" }}>
-              <input className="mono" readOnly value={inboundUrl} />
-              <CopyButton value={inboundUrl} />
+          <details>
+            <summary className="muted small">No IMAP on your plan? Use the free inbound webhook</summary>
+            <div className="callout">
+              Forward replies to this URL (e.g. SendGrid Inbound Parse, or a
+              Cloudflare Email Worker) and they’re matched automatically — see
+              REPLY-TRACKING.md. Set Protocol to Off and use a Reply-To on the
+              subdomain you route here.
+              <div className="field-row" style={{ alignItems: "center", marginTop: "6px" }}>
+                <input className="mono" readOnly value={inboundUrl} />
+                <CopyButton value={inboundUrl} />
+              </div>
             </div>
-          </div>
+          </details>
 
           <div className="field-row">
             <label className="field">
