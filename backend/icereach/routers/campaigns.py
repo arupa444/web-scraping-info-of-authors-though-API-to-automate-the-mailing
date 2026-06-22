@@ -13,7 +13,7 @@ from ..models import Campaign, CampaignVariant
 from ..schemas.campaign import CampaignDuplicateIn, CampaignIn, CampaignOut, VariantIn, VariantOut
 from ..security.deps import AuthContext, auth_context
 from ..services import sender  # noqa: F401 — registers the send_campaign handler
-from ..services.analytics import campaign_metrics, variant_breakdown
+from ..services.analytics import campaign_metrics, campaign_recipients, variant_breakdown
 from ..services.queue import enqueue
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -179,6 +179,13 @@ def analytics(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: Db
 def variants(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
     _owned(db, ctx, campaign_id)
     return variant_breakdown(db, ctx.workspace.id, campaign_id)
+
+
+@router.get("/{campaign_id}/recipients")
+def recipients(campaign_id: int, ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)):
+    """Per-recipient engagement: who opened / clicked (which links) / replied."""
+    _owned(db, ctx, campaign_id)
+    return campaign_recipients(db, ctx.workspace.id, campaign_id)
 
 
 def _narrative_payload(c: Campaign) -> dict:

@@ -207,3 +207,30 @@ def test_campaign_metrics_is_campaign_scoped(db):
     assert m["sent"] == 3
     assert m["total_opens"] == 3
     assert m["unique_opens"] == 2
+
+
+def test_campaign_recipients_shows_who_did_what(db):
+    ws = _workspace(db, slug="recip")
+    camp = _campaign(db, ws)
+    clicker = _contact(db, ws, "clicker@x.com")
+    opener = _contact(db, ws, "opener@x.com")
+    quiet = _contact(db, ws, "quiet@x.com")
+    m_click = _message(db, ws, camp, clicker)
+    m_open = _message(db, ws, camp, opener)
+    _message(db, ws, camp, quiet)
+    _event(db, ws, m_click, "open")
+    _event(db, ws, m_click, "click", url="https://acme.com/buy")
+    _event(db, ws, m_click, "reply")
+    _event(db, ws, m_open, "open")
+    db.flush()
+
+    rows = analytics.campaign_recipients(db, ws.id, camp.id)
+    by_email = {r["email"]: r for r in rows}
+
+    assert by_email["clicker@x.com"]["clicked"] is True
+    assert by_email["clicker@x.com"]["clicked_urls"] == ["https://acme.com/buy"]
+    assert by_email["clicker@x.com"]["replied"] is True
+    assert by_email["opener@x.com"]["opened"] is True and by_email["opener@x.com"]["clicked"] is False
+    assert by_email["quiet@x.com"]["opened"] is False
+    # Most engaged first.
+    assert rows[0]["email"] == "clicker@x.com"

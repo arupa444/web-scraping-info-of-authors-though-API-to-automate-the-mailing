@@ -622,8 +622,27 @@ export interface AnalyticsNarrative {
   generated_at: string | null;
 }
 
+export interface CampaignRecipient {
+  contact_id: number;
+  email: string;
+  name: string;
+  status: string;
+  sent_at: string | null;
+  opened: boolean;
+  opens: number;
+  clicked: boolean;
+  clicks: number;
+  clicked_urls: string[];
+  replied: boolean;
+  unsubscribed: boolean;
+  last_activity_at: string | null;
+}
+
 export function getCampaignVariants(id: number | string) {
   return api.get<CampaignVariants>(`/api/campaigns/${id}/variants`);
+}
+export function getCampaignRecipients(id: number | string) {
+  return api.get<CampaignRecipient[]>(`/api/campaigns/${id}/recipients`);
 }
 export function getCampaignNarrative(id: number | string) {
   return api.get<AnalyticsNarrative>(

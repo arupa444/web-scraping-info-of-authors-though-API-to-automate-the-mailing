@@ -15,7 +15,7 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import CampaignVariant, Event, Message
+from ..models import CampaignVariant, Contact, Event, Message
 
 
 def _safe_ratio(numerator: int, denominator: int) -> float:
@@ -113,6 +113,70 @@ def campaign_metrics(db: Session, workspace_id: int, campaign_id: int) -> dict:
         "delivered": delivered,
         "complaints": complaints,
     }
+
+
+def campaign_recipients(db: Session, workspace_id: int, campaign_id: int) -> list[dict]:
+    """Per-recipient engagement for a campaign: who opened / clicked / replied.
+
+    Returns one row per contact emailed, with their event rollup so the UI can
+    show exactly who did what (and target follow-ups at a behaviour).
+    """
+    msgs = db.scalars(
+        select(Message).where(
+            Message.campaign_id == campaign_id, Message.workspace_id == workspace_id
+        )
+    ).all()
+    if not msgs:
+        return []
+    by_id = {m.id: m for m in msgs}
+    contacts = {
+        c.id: c
+        for c in db.scalars(
+            select(Contact).where(Contact.id.in_({m.contact_id for m in msgs}))
+        ).all()
+    }
+    # Aggregate this campaign's events per message in one pass.
+    agg: dict[int, dict] = {mid: {"open": 0, "click": 0, "reply": 0, "unsubscribe": 0,
+                                  "urls": [], "last": None} for mid in by_id}
+    events = db.scalars(
+        select(Event)
+        .join(Message, Message.id == Event.message_id)
+        .where(Message.campaign_id == campaign_id, Event.workspace_id == workspace_id)
+        .order_by(Event.created_at)
+    ).all()
+    for e in events:
+        bucket = agg.get(e.message_id)
+        if bucket is None:
+            continue
+        if e.type in bucket:
+            bucket[e.type] += 1
+        if e.type == "click" and e.url and e.url not in bucket["urls"]:
+            bucket["urls"].append(e.url)
+        bucket["last"] = e.created_at
+
+    rows = []
+    for mid, m in by_id.items():
+        c = contacts.get(m.contact_id)
+        a = agg[mid]
+        last = a["last"] or m.sent_at
+        rows.append({
+            "contact_id": m.contact_id,
+            "email": c.email if c else "",
+            "name": (c.name if c else "") or "",
+            "status": m.status,
+            "sent_at": m.sent_at.isoformat() + "Z" if m.sent_at else None,
+            "opened": a["open"] > 0,
+            "opens": a["open"],
+            "clicked": a["click"] > 0,
+            "clicks": a["click"],
+            "clicked_urls": a["urls"],
+            "replied": a["reply"] > 0,
+            "unsubscribed": a["unsubscribe"] > 0,
+            "last_activity_at": last.isoformat() + "Z" if last else None,
+        })
+    # Most engaged first: replied, then clicked, then opened.
+    rows.sort(key=lambda r: (r["replied"], r["clicked"], r["opened"]), reverse=True)
+    return rows
 
 
 def variant_breakdown(db: Session, workspace_id: int, campaign_id: int) -> dict:

@@ -5,10 +5,12 @@ import {
   api,
   analyticsNarrative,
   getCampaignNarrative,
+  getCampaignRecipients,
   getCampaignVariants,
   type AnalyticsNarrative,
   type Campaign,
   type CampaignAnalytics as Analytics,
+  type CampaignRecipient,
   type CampaignVariants,
 } from "../lib/api";
 import {
@@ -56,6 +58,7 @@ export default function CampaignAnalytics() {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [data, setData] = useState<Analytics | null>(null);
   const [variants, setVariants] = useState<CampaignVariants | null>(null);
+  const [recipients, setRecipients] = useState<CampaignRecipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,15 +70,17 @@ export default function CampaignAnalytics() {
   useEffect(() => {
     (async () => {
       try {
-        const [c, a, v, n] = await Promise.all([
+        const [c, a, v, n, r] = await Promise.all([
           api.get<Campaign>(`/api/campaigns/${id}`),
           api.get<Analytics>(`/api/campaigns/${id}/analytics`),
           getCampaignVariants(id!).catch(() => null),
           getCampaignNarrative(id!).catch(() => null),
+          getCampaignRecipients(id!).catch(() => []),
         ]);
         setCampaign(c);
         setData(a);
         setVariants(v);
+        setRecipients(r);
         // Show a previously-generated AI summary so it survives refreshes.
         if (n && n.summary) setNarrative(n);
       } catch (err) {
@@ -183,6 +188,67 @@ export default function CampaignAnalytics() {
                   </tbody>
                 </table>
               </div>
+            </Card>
+          )}
+
+          {recipients.length > 0 && (
+            <Card title={`Recipients (${recipients.length})`}>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Contact</th>
+                      <th>Opened</th>
+                      <th>Clicked</th>
+                      <th>Replied</th>
+                      <th>Status</th>
+                      <th>Last activity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recipients.map((r) => (
+                      <tr key={r.contact_id}>
+                        <td>
+                          <strong>{r.name || r.email}</strong>
+                          {r.name ? (
+                            <div className="muted small">{r.email}</div>
+                          ) : null}
+                          {r.clicked_urls.length > 0 && (
+                            <div className="muted small">
+                              ↳ {r.clicked_urls.join(", ")}
+                            </div>
+                          )}
+                        </td>
+                        <td>{r.opened ? `Yes (${r.opens})` : "—"}</td>
+                        <td>{r.clicked ? `Yes (${r.clicks})` : "—"}</td>
+                        <td>
+                          {r.replied ? (
+                            <span className="pill pill-active">Replied</span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td>
+                          {r.unsubscribed ? (
+                            <span className="pill pill-unsubscribed">unsub</span>
+                          ) : (
+                            <span className="muted">{r.status}</span>
+                          )}
+                        </td>
+                        <td className="muted small">
+                          {r.last_activity_at
+                            ? new Date(r.last_activity_at).toLocaleString()
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="muted small">
+                Opens/clicks register only when tracking links are reachable
+                (public BASE_URL); replies require IMAP reply tracking.
+              </p>
             </Card>
           )}
 
